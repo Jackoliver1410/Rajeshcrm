@@ -316,32 +316,32 @@ body[data-sidebar="collapsed"] .sidebar-expand-btn { display: flex; }
 }
 
 .topbar {
-  min-height: 60px;
+  min-height: 52px;
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 28px;
+  padding: 8px 20px;
   flex-wrap: wrap;
-  row-gap: 8px;
+  row-gap: 6px;
 }
 
 .topbar h1 { font-size: 1.0625rem; margin: 0; flex-shrink: 0; }
 .topbar-left { display: flex; gap: 14px; align-items: center; flex-shrink: 0; }
-.topbar-right { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; row-gap: 8px; justify-content: flex-end; min-width: 0; }
+.topbar-right { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; row-gap: 6px; justify-content: flex-end; min-width: 0; }
 /* justify-content: flex-end (not the default flex-start) so that when this
    row doesn't have room for every filter + action button on one line, the
    overflow (e.g. "Quick Add" / "+ New Contact") wraps to a second line
    still hugging the right edge -- lined up under the settings gear --
    instead of collapsing to the left edge under the search box, stranded
    away from the rest of the toolbar. */
-#topbar-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; row-gap: 8px; justify-content: flex-end; }
+#topbar-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; row-gap: 6px; justify-content: flex-end; }
 
 /* Toolbar buttons that sit alongside the folded-in filters (Accounts,
    Contacts) -- smaller than the app's default .btn so title + filters +
    all six action buttons realistically fit on one header line instead of
    the default button padding forcing an early wrap. */
-.btn-compact { padding: 7px 11px; font-size: clamp(0.8rem, 0.28vw + 0.74rem, 0.8125rem); }
+.btn-compact { padding: 6px 10px; font-size: clamp(0.8rem, 0.28vw + 0.74rem, 0.8125rem); }
 
 /* Compact filter controls folded directly into the topbar (Accounts,
    Contacts) so the page title, the search/filter row, and the action
@@ -349,9 +349,9 @@ body[data-sidebar="collapsed"] .sidebar-expand-btn { display: flex; }
    full-width filter card underneath -- that used to cost an extra card's
    worth of border/padding/margin before a single table row was visible.
    Sits inline with the toolbar buttons in #topbar-actions. */
-.topbar-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.topbar-filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .topbar-filters input, .topbar-filters select {
-  padding: 7px 10px;
+  padding: 6px 9px;
   font-size: clamp(0.8rem, 0.28vw + 0.74rem, 0.8125rem);
 }
 /* Fixed pixel widths, not "auto" -- a <select> with width:auto sizes itself
@@ -364,6 +364,51 @@ body[data-sidebar="collapsed"] .sidebar-expand-btn { display: flex; }
 .topbar-filters select { width: 106px; flex-shrink: 0; text-overflow: ellipsis; }
 .topbar-filter-count { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
 .topbar-divider { width: 1px; align-self: stretch; background: var(--border); margin: 2px 2px; }
+
+/* ---- Two-row toolbar for list views with filters (Contacts, Accounts) ----
+   These are the only topbars that combine a title, a filter/search group,
+   AND a full row of action buttons -- too much to ever fit on one line
+   without either wrapping unpredictably (buttons stranding on their own
+   left-aligned row, disconnected from the rest of the toolbar) or crowding
+   everything together. Instead this pins it to exactly two clean rows:
+     Row 1: page title, filters + result count, settings -- all close
+            together with one small consistent gap, no pushed-apart gaps
+     Row 2: Search Apollo, Export CSV, Export XLSX, Import, Quick Add, +New
+            -- left-aligned, starting right under the title
+   `:has()` scopes this to only topbars that actually contain .topbar-filters
+   -- simpler topbars elsewhere (Leads, Leave, etc., often just one button)
+   are untouched and keep their original single-row layout.
+   The trick: make the two wrapper divs (.topbar-right, #topbar-actions)
+   `display: contents` so their children become direct flex items of
+   .topbar itself, then use `order` to place title/filters/gear on row 1.
+   The existing .topbar-divider (already sitting in the markup right
+   between the filters and the buttons) is repurposed as the forced line
+   break: flex-basis:100% makes it alone fill row 1's remaining width so
+   everything after it -- the buttons -- is pushed onto a fresh row 2.
+   Deliberately no margin-left:auto anywhere in this block -- an earlier
+   version pushed the gear and the button row to the far right edge, which
+   just left a big dead gap in the middle instead of looking intentional. */
+.topbar:has(.topbar-filters) {
+  justify-content: flex-start;
+  column-gap: 14px;
+}
+.topbar:has(.topbar-filters) .topbar-right,
+.topbar:has(.topbar-filters) #topbar-actions {
+  display: contents;
+}
+.topbar:has(.topbar-filters) .topbar-left { order: 1; }
+.topbar:has(.topbar-filters) .topbar-filters { order: 2; }
+.topbar:has(.topbar-filters) #settings-gear-btn { order: 3; }
+.topbar:has(.topbar-filters) .topbar-divider {
+  order: 4;
+  flex-basis: 100%;
+  width: auto;
+  height: 0;
+  margin: 0;
+  background: none;
+  align-self: auto;
+}
+.topbar:has(.topbar-filters) .btn-compact { order: 5; }
 
 /* Streak strip shown beside the page title on Activity Report -- a quick
    glance at which of the last few workdays have a logged entry. */
@@ -403,7 +448,7 @@ body[data-sidebar="collapsed"] .sidebar-expand-btn { display: flex; }
 .icon-btn:hover { background: var(--panel-2); color: var(--text); border-color: var(--border); }
 .icon-btn.active-icon { color: var(--teal); background: var(--panel-2); border-color: var(--border); }
 
-.content { padding: 26px 28px; overflow-y: auto; }
+.content { padding: 14px 16px; overflow-y: auto; }
 
 .stat-grid {
   display: grid;
@@ -511,8 +556,8 @@ body[data-sidebar="collapsed"] .sidebar-expand-btn { display: flex; }
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 20px;
-  margin-bottom: 20px;
+  padding: 14px;
+  margin-bottom: 14px;
 }
 
 .panel h2 { font-size: 15px; margin: 0 0 14px; }

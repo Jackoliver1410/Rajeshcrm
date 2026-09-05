@@ -5786,12 +5786,16 @@ function renderSettings() {
   // "Users" used to be admin-only (it was just an org-wide directory/admin
   // console). Now every role has a real reason to be on it -- a rep views
   // their own profile, a manager manages their direct reports -- so only
-  // Access Control and Holidays stay admin-only.
-  if ((settingsTab === "holidays" || settingsTab === "access") && !isAdmin) settingsTab = "appearance";
+  // Integrations, Access Control, and Holidays stay admin-only. Integrations
+  // holds every AI/Apollo/Outlook-app/Salesforce API key for the org, so
+  // it's not just gated server-side (non-admins already got a generic
+  // placeholder there instead of real data) -- the tab itself is hidden so
+  // a non-admin never even sees that this configuration exists.
+  if ((settingsTab === "holidays" || settingsTab === "access" || settingsTab === "integrations") && !isAdmin) settingsTab = "appearance";
   root.innerHTML = `
     <div class="settings-tabs">
       <div class="settings-tab ${settingsTab === "appearance" ? "active" : ""}" data-tab="appearance">Appearance</div>
-      <div class="settings-tab ${settingsTab === "integrations" ? "active" : ""}" data-tab="integrations">Integrations</div>
+      ${isAdmin ? `<div class="settings-tab ${settingsTab === "integrations" ? "active" : ""}" data-tab="integrations">Integrations</div>` : ""}
       <div class="settings-tab ${settingsTab === "users" ? "active" : ""}" data-tab="users">${isAdmin ? "Users" : state.user.role === "manager" ? "My Team" : "My Profile"}</div>
       ${isAdmin ? `<div class="settings-tab ${settingsTab === "access" ? "active" : ""}" data-tab="access">Access Control</div>` : ""}
       ${isAdmin ? `<div class="settings-tab ${settingsTab === "holidays" ? "active" : ""}" data-tab="holidays">Holidays</div>` : ""}
@@ -6707,17 +6711,23 @@ async function renderIntegrationSettings() {
     body.innerHTML = outlookPersonalPanel + emailMethodPanel + `
       <div class="panel">
         <h2>AI providers</h2>
-        <div style="color:var(--text-dim);font-size:13px;margin-bottom:14px">Add an API key and mark one provider active to power "Draft with AI" on contacts. Keys are stored in the app's database and masked after saving.</div>
+        <div style="color:var(--text-dim);font-size:13px;margin-bottom:14px">Add an API key per provider. "General" powers everything by default (Quick Add, Account briefs, etc); "Drafting" is a separate, optional override just for outreach writing (Draft with AI, auto-draft, sequences) — leave it unset and drafting just uses the General provider too. Keys are stored in the app's database and masked after saving.</div>
         ${data.providers.map((p) => `
           <div class="integration-card" data-provider="${p.provider}">
             <div class="meta">
-              <div class="name">${p.label} ${p.active ? `<span class="pill pill-active">Active</span>` : (p.configured ? `<span class="pill pill-inactive">Configured</span>` : "")}</div>
+              <div class="name">
+                ${p.label}
+                ${p.active ? `<span class="pill pill-active">General</span>` : ""}
+                ${p.drafting_active ? `<span class="pill pill-active">Drafting</span>` : ""}
+                ${!p.active && !p.drafting_active && p.configured ? `<span class="pill pill-inactive">Configured</span>` : ""}
+              </div>
               <div class="desc">${p.configured ? `Key on file: ${p.key_preview}` : "No key saved yet"}${p.updated_at ? " · updated " + p.updated_at : ""}</div>
             </div>
             <div class="row">
               <input type="password" placeholder="${p.configured ? "Replace key…" : "Paste API key…"}" data-key-input />
               <button class="btn btn-small" data-save>Save</button>
-              ${!p.active ? `<button class="btn btn-small btn-primary" data-activate ${p.configured ? "" : "disabled"}>Use this</button>` : ""}
+              ${!p.active ? `<button class="btn btn-small btn-primary" data-activate ${p.configured ? "" : "disabled"}>Use for General</button>` : ""}
+              ${!p.drafting_active ? `<button class="btn btn-small" data-activate-drafting ${p.configured ? "" : "disabled"}>Use for Drafting</button>` : `<button class="btn btn-small" data-clear-drafting>Stop using for Drafting</button>`}
             </div>
           </div>
         `).join("")}
@@ -6836,9 +6846,37 @@ async function renderIntegrationSettings() {
       btn.addEventListener("click", async () => {
         const card = btn.closest(".integration-card");
         const provider = card.dataset.provider;
+        const label = data.providers.find((pp) => pp.provider === provider)?.label || provider;
         try {
           await api(`/api/integrations/${provider}`, { method: "PUT", body: { active: true } });
-          toast(`${card.querySelector(".name").textContent.trim()} set as active`);
+          toast(`${label} set as the General provider`);
+          renderIntegrationSettings();
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      });
+    });
+    body.querySelectorAll("[data-activate-drafting]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const card = btn.closest(".integration-card");
+        const provider = card.dataset.provider;
+        const label = data.providers.find((pp) => pp.provider === provider)?.label || provider;
+        try {
+          await api(`/api/integrations/${provider}`, { method: "PUT", body: { drafting_active: true } });
+          toast(`${label} set as the Drafting provider`);
+          renderIntegrationSettings();
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      });
+    });
+    body.querySelectorAll("[data-clear-drafting]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const card = btn.closest(".integration-card");
+        const provider = card.dataset.provider;
+        try {
+          await api(`/api/integrations/${provider}`, { method: "PUT", body: { drafting_active: false } });
+          toast("Drafting will use the General provider again");
           renderIntegrationSettings();
         } catch (err) {
           toast(err.message, "error");
