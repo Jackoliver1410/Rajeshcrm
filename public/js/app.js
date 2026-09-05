@@ -626,7 +626,6 @@ async function tryResumeSession() {
 // A tab not listed here (Dashboard, Contacts, Accounts, Leaves/WFH) is
 // always visible -- feature toggles only apply to the six gated features.
 const NAV_FEATURE_KEYS = {
-  "accounts-gem": "accounts_gem",
   salesforce: "salesforce",
   emailing: "emailing",
   activity: "activity_report",
@@ -806,7 +805,6 @@ const VIEW_TITLES = {
   leads: "Leads",
   contacts: "Contacts",
   accounts: "Accounts",
-  "accounts-gem": "Accounts Gem",
   activity: "Activity Report",
   leave: "Leaves / WFH",
   salesforce: "Salesforce",
@@ -825,7 +823,6 @@ function switchView(view) {
     leads: renderLeads,
     contacts: renderContacts,
     accounts: renderAccounts,
-    "accounts-gem": renderAccountsGem,
     activity: renderActivity,
     leave: renderLeave,
     salesforce: renderSalesforce,
@@ -3008,6 +3005,21 @@ let accountsSelected = new Set();
 // accountMatchesFilters().
 let accountsFilters = { search: "", industry: "", ownerId: "", scoreBand: "" };
 
+// Which sub-tab of the Accounts page is showing -- "list" (the accounts
+// table) or "gem" (Accounts Gem, merged in here rather than living as its
+// own sidebar item). Module-level so it survives the re-renders every filter
+// change and Gem interaction triggers.
+let accountsTab = "list";
+
+// Same accounts_gem feature_access key that used to gate the standalone
+// sidebar nav item -- now gates the "Accounts Gem" sub-tab instead. Admins
+// always see it; everyone else needs the flag on (default true, same as
+// every other feature_access key elsewhere in the app).
+function hasAccountsGemAccess() {
+  if (state.user.role === "admin") return true;
+  return (state.user.feature_access || {}).accounts_gem !== false;
+}
+
 const INTENT_SCORE_BAND_OPTIONS = [
   ["90-99", "90–99 (Hot)"],
   ["80-89", "80–89"],
@@ -3086,7 +3098,45 @@ async function openCompanyProfileModal() {
   });
 }
 
+// Dispatcher for the Accounts sidebar item -- shows either the accounts
+// table (accountsTab === "list") or Accounts Gem (accountsTab === "gem"),
+// as sub-tabs of one page rather than two separate nav items. Accounts Gem
+// keeps its own feature_access gate (accounts_gem); if a user without that
+// access somehow has the tab selected (e.g. an admin toggled it off for
+// them mid-session), fall back to the list rather than rendering a tab they
+// shouldn't see.
 function renderAccounts() {
+  if (accountsTab === "gem" && hasAccountsGemAccess()) {
+    renderAccountsGem();
+  } else {
+    accountsTab = "list";
+    renderAccountsListView();
+  }
+}
+
+// data-accounts-tab sub-tab bar shown atop the Accounts page content when
+// the signed-in user has access to Accounts Gem -- reuses the same
+// .settings-tabs/.settings-tab pattern as Settings, Salesforce, and Emailing
+// so it looks consistent with the rest of the app's sub-tab UI.
+function accountsTabBarHtml() {
+  return `
+    <div class="settings-tabs" style="margin-bottom:16px">
+      <div class="settings-tab ${accountsTab === "list" ? "active" : ""}" data-accounts-tab="list">All Accounts</div>
+      <div class="settings-tab ${accountsTab === "gem" ? "active" : ""}" data-accounts-tab="gem">Accounts Gem</div>
+    </div>
+  `;
+}
+
+function wireAccountsTabBar(root) {
+  root.querySelectorAll("[data-accounts-tab]").forEach((el) => {
+    el.addEventListener("click", () => {
+      accountsTab = el.dataset.accountsTab;
+      renderAccounts();
+    });
+  });
+}
+
+function renderAccountsListView() {
   const rows = state.accounts.filter(accountMatchesFilters);
   const filtersActive = Boolean(accountsFilters.search || accountsFilters.industry || accountsFilters.ownerId || accountsFilters.scoreBand);
   const canDelete = ["admin", "manager"].includes(state.user.role);
@@ -3133,6 +3183,7 @@ function renderAccounts() {
 
   const root = document.getElementById("view-root");
   root.innerHTML = `
+    ${hasAccountsGemAccess() ? accountsTabBarHtml() : ""}
     ${accountsScopeFilter ? `
       <div class="modal-actions" style="justify-content:flex-start;margin-bottom:10px">
         <span class="pill pill-active">Showing companies for this scope</span>
@@ -3168,6 +3219,8 @@ function renderAccounts() {
       </table>
     </div>
   `;
+
+  wireAccountsTabBar(root);
 
   const clearBtn = document.getElementById("accounts-clear-filter-btn");
   if (clearBtn) clearBtn.addEventListener("click", () => { accountsScopeFilter = null; renderAccounts(); });
@@ -3437,6 +3490,7 @@ function renderAccountsGem() {
 
   const root = document.getElementById("view-root");
   root.innerHTML = `
+    ${accountsTabBarHtml()}
     <div class="panel">
       <div style="color:var(--text-dim);font-size:13px;margin-bottom:14px">
         Your enterprise-SDR agent for ACCELQ — turns account signals into business-impact reasoning, then writes copy-ready outreach, call prep, objection handling, and more. Pick a command or just describe what you need.
@@ -3486,6 +3540,8 @@ function renderAccountsGem() {
     ${renderGemOutputPanel()}
     ${renderGemHistoryPanel()}
   `;
+
+  wireAccountsTabBar(root);
 
   root.querySelectorAll("[data-gem-chip]").forEach((btn) => {
     btn.addEventListener("click", () => {
