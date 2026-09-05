@@ -19,14 +19,27 @@
   /* Table view density -- app-wide (every <table>, not just Contacts),
      set from Settings > Appearance and applied via body[data-density]
      below. These "comfortable" values match what every table already
-     shipped with, so a user who never touches the setting sees no change. */
-  --table-font-size: 13px;
-  --table-header-font-size: 12px;
+     shipped with, so a user who never touches the setting sees no change.
+     Each is a clamp() so it also scales a little with the viewport --
+     see the "fluid type scale" comment on html{} below for why. */
+  --table-font-size: clamp(12px, 0.55vw + 11px, 13px);
+  --table-header-font-size: clamp(11px, 0.5vw + 10px, 12px);
   --table-cell-padding-y: 10px;
   --table-cell-padding-x: 10px;
   --table-header-padding-y: 8px;
   --table-header-padding-x: 10px;
 }
+
+/* Fluid type scale: instead of every rule below being frozen at one literal
+   px value regardless of window size, the root font-size itself flexes
+   with viewport width (clamp(min, preferred, max) -- never smaller than
+   14px, never larger than 16px, scaling smoothly in between). Any rule
+   written in rem then automatically scales with it. Only the highest-
+   traffic, always-on-screen text (sidebar nav/brand, topbar title, buttons,
+   filter inputs, table cells via the vars above) was converted to rem for
+   this pass -- the bulk of one-off in-page text keeps its existing px
+   sizing rather than risking a full rewrite of every rule in this file. */
+html { font-size: clamp(14px, 0.6vw + 12.5px, 16px); }
 
 * { box-sizing: border-box; }
 
@@ -37,19 +50,20 @@ body {
   font-family: var(--font-family);
   background: var(--bg);
   color: var(--text);
+  font-size: 1rem;
 }
 
 body[data-density="compact"] {
-  --table-font-size: 12px;
-  --table-header-font-size: 11px;
+  --table-font-size: clamp(11px, 0.5vw + 10px, 12px);
+  --table-header-font-size: clamp(10px, 0.45vw + 9px, 11px);
   --table-cell-padding-y: 5px;
   --table-cell-padding-x: 8px;
   --table-header-padding-y: 4px;
   --table-header-padding-x: 8px;
 }
 body[data-density="spacious"] {
-  --table-font-size: 14px;
-  --table-header-font-size: 13px;
+  --table-font-size: clamp(13px, 0.6vw + 12px, 14px);
+  --table-header-font-size: clamp(12px, 0.55vw + 11px, 13px);
   --table-cell-padding-y: 16px;
   --table-cell-padding-x: 14px;
   --table-header-padding-y: 12px;
@@ -91,7 +105,7 @@ body[data-density="spacious"] {
   color: #ffffff;
 }
 
-.brand-name { font-size: 20px; font-weight: 700; letter-spacing: 0.3px; }
+.brand-name { font-size: clamp(1.125rem, 0.5vw + 1rem, 1.25rem); font-weight: 700; letter-spacing: 0.3px; }
 .brand-sub { color: var(--text-dim); font-size: 13px; margin-bottom: 24px; }
 
 label { display: block; font-size: 12px; color: var(--text-dim); margin: 14px 0 6px; }
@@ -134,7 +148,7 @@ button {
   border: none;
   border-radius: 8px;
   padding: 10px 16px;
-  font-size: 14px;
+  font-size: clamp(0.85rem, 0.3vw + 0.78rem, 0.875rem);
   font-weight: 600;
   background: var(--panel-2);
   color: var(--text);
@@ -149,7 +163,7 @@ button {
 
 .btn-danger { background: var(--coral); color: #2a0a0a; border: none; }
 .btn-full { width: 100%; margin-top: 20px; }
-.btn-small { padding: 6px 10px; font-size: 12px; }
+.btn-small { padding: 6px 10px; font-size: clamp(0.72rem, 0.25vw + 0.67rem, 0.75rem); }
 
 /* Without this, a disabled button (e.g. "Use this" before a key is saved,
    or the placeholder Import-source cards) renders pixel-identical to an
@@ -259,8 +273,8 @@ body[data-sidebar="collapsed"] .sidebar-expand-btn { display: flex; }
 }
 
 .sidebar-profile:hover { border-color: var(--teal); }
-.sidebar-profile-name { font-size: 13px; font-weight: 600; color: #ffffff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sidebar-profile-title { font-size: 11px; color: rgba(255, 255, 255, 0.68); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-profile-name { font-size: clamp(0.8rem, 0.3vw + 0.73rem, 0.8125rem); font-weight: 600; color: #ffffff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-profile-title { font-size: clamp(0.68rem, 0.25vw + 0.63rem, 0.6875rem); color: rgba(255, 255, 255, 0.68); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .nav-item {
   display: flex;
@@ -270,7 +284,7 @@ body[data-sidebar="collapsed"] .sidebar-expand-btn { display: flex; }
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.72);
   cursor: pointer;
-  font-size: 14px;
+  font-size: clamp(0.85rem, 0.3vw + 0.78rem, 0.875rem);
   margin-bottom: 4px;
 }
 
@@ -312,16 +326,22 @@ body[data-sidebar="collapsed"] .sidebar-expand-btn { display: flex; }
   row-gap: 8px;
 }
 
-.topbar h1 { font-size: 17px; margin: 0; flex-shrink: 0; }
+.topbar h1 { font-size: 1.0625rem; margin: 0; flex-shrink: 0; }
 .topbar-left { display: flex; gap: 14px; align-items: center; flex-shrink: 0; }
 .topbar-right { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; row-gap: 8px; justify-content: flex-end; min-width: 0; }
-#topbar-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; row-gap: 8px; }
+/* justify-content: flex-end (not the default flex-start) so that when this
+   row doesn't have room for every filter + action button on one line, the
+   overflow (e.g. "Quick Add" / "+ New Contact") wraps to a second line
+   still hugging the right edge -- lined up under the settings gear --
+   instead of collapsing to the left edge under the search box, stranded
+   away from the rest of the toolbar. */
+#topbar-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; row-gap: 8px; justify-content: flex-end; }
 
 /* Toolbar buttons that sit alongside the folded-in filters (Accounts,
    Contacts) -- smaller than the app's default .btn so title + filters +
    all six action buttons realistically fit on one header line instead of
    the default button padding forcing an early wrap. */
-.btn-compact { padding: 7px 11px; font-size: 13px; }
+.btn-compact { padding: 7px 11px; font-size: clamp(0.8rem, 0.28vw + 0.74rem, 0.8125rem); }
 
 /* Compact filter controls folded directly into the topbar (Accounts,
    Contacts) so the page title, the search/filter row, and the action
@@ -332,7 +352,7 @@ body[data-sidebar="collapsed"] .sidebar-expand-btn { display: flex; }
 .topbar-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .topbar-filters input, .topbar-filters select {
   padding: 7px 10px;
-  font-size: 13px;
+  font-size: clamp(0.8rem, 0.28vw + 0.74rem, 0.8125rem);
 }
 /* Fixed pixel widths, not "auto" -- a <select> with width:auto sizes itself
    to its widest <option> (a long account/company name can blow one up past
