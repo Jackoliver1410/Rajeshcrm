@@ -1,0 +1,30 @@
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api"
+  status = 200
+
+# Without this, Netlify's edge was caching /js/app.js and /css/styles.css for
+# up to a year regardless of the plain Cache-Control header on the asset
+# itself (observed via `cache-status: hit; ttl=31535293`) — a deploy would go
+# out but users' browsers/the CDN kept serving the previous build's JS with
+# no visible sign anything was stale. no-cache forces revalidation against
+# the new deploy's ETag on every request instead of blindly serving a cached
+# copy for months.
+[[headers]]
+  for = "/js/*"
+  [headers.values]
+    Cache-Control = "no-cache, must-revalidate"
+
+[[headers]]
+  for = "/css/*"
+  [headers.values]
+    Cache-Control = "no-cache, must-revalidate"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache, must-revalidate"

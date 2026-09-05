@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>SDR Outreach</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="/css/styles.css?v=1788508339" />
+</head>
+<body>
+
+<div id="login-screen">
+  <div class="login-card">
+    <div class="brand">
+      <div class="brand-mark">S</div>
+      <div class="brand-name">SDR Outreach</div>
+    </div>
+    <div class="brand-sub">Leads, reporting &amp; leave &mdash; one internal workspace.</div>
+    <form id="login-form">
+      <label for="login-email">Work email</label>
+      <input id="login-email" type="email" autocomplete="username" required />
+      <label for="login-password">Password</label>
+      <input id="login-password" type="password" autocomplete="current-password" required />
+      <div class="login-row">
+        <label class="login-remember">
+          <input id="login-remember" type="checkbox" />
+          <span>Remember me</span>
+        </label>
+        <a href="#" id="login-forgot-link">Forgot password?</a>
+      </div>
+      <button class="btn btn-primary btn-full" type="submit">Sign in</button>
+      <div class="error-text" id="login-error"></div>
+    </form>
+  </div>
+</div>
+
+<div id="app-shell">
+  <div class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">S</div>
+      <div class="brand-name">SDR Outreach</div>
+      <button type="button" class="sidebar-collapse-btn" id="sidebar-collapse-btn" title="Hide sidebar" aria-label="Hide sidebar">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 19l-7-7 7-7"></path><path d="M18 19l-7-7 7-7"></path></svg>
+      </button>
+    </div>
+    <button type="button" class="sidebar-profile" id="sidebar-profile-btn">
+      <div class="sidebar-profile-name" id="sidebar-profile-name">&mdash;</div>
+      <div class="sidebar-profile-title" id="sidebar-profile-title">&mdash;</div>
+    </button>
+    <div class="nav-item active" data-view="dashboard">Dashboard</div>
+    <div class="nav-item" data-view="contacts">Contacts</div>
+    <div class="nav-item" data-view="accounts">Accounts</div>
+    <div class="nav-item" data-view="accounts-gem">Accounts Gem</div>
+    <div class="nav-item" data-view="salesforce">Salesforce</div>
+    <div class="nav-item" data-view="emailing">Emailing</div>
+    <div class="nav-item" data-view="activity">
+      Activity Report
+      <span class="badge hidden" id="activity-badge">0</span>
+    </div>
+    <div class="nav-item" data-view="leads" id="nav-leads">Leads</div>
+    <div class="nav-item" data-view="leave">
+      Leaves / WFH
+      <span class="badge hidden" id="leave-badge">0</span>
+    </div>
+    <div class="sidebar-footer">
+      <div id="current-user-name">&mdash;</div>
+      <div class="role-tag" id="current-user-role">&mdash;</div>
+      <button class="btn btn-small" style="margin-top:10px;width:100%" id="logout-btn">Sign out</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-left">
+        <h1 id="view-title">Dashboard</h1>
+        <div id="view-title-extra"></div>
+      </div>
+      <div class="topbar-right">
+        <div id="topbar-actions"></div>
+        <button type="button" class="icon-btn" id="settings-gear-btn" title="Settings" aria-label="Settings">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <div class="content" id="view-root"></div>
+  </div>
+</div>
+
+<div class="modal-backdrop hidden" id="modal-backdrop">
+  <div class="modal" id="modal-window">
+    <div class="modal-titlebar" id="modal-titlebar">
+      <button type="button" class="modal-ctrl modal-ctrl-min" id="modal-min-btn" title="Minimize" aria-label="Minimize">&#8722;</button>
+      <button type="button" class="modal-ctrl modal-ctrl-max" id="modal-max-btn" title="Maximize" aria-label="Maximize"></button>
+      <button type="button" class="modal-ctrl modal-ctrl-close" id="modal-close-btn" title="Close" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-content" id="modal-body"></div>
+    <div class="modal-resize-handle" id="modal-resize-handle" title="Drag to resize" aria-hidden="true"></div>
+  </div>
+</div>
+
+<button type="button" class="sidebar-expand-btn" id="sidebar-expand-btn" title="Show sidebar" aria-label="Show sidebar">
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 5l7 7-7 7"></path><path d="M6 5l7 7-7 7"></path></svg>
+</button>
+
+<div class="toast hidden" id="toast"></div>
+
+<script src="/js/app.js?v=1788508339"></script>
+</body>
+</html>

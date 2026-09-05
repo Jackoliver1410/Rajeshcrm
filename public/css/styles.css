@@ -1,0 +1,915 @@
+:root {
+  /* ACCELQ brand theme: deep blue + white + green, matching the logo. */
+  --ink: #1e3ae8;        /* AccelQ blue -- sidebar background */
+  --ink-deep: #142db8;   /* darker blue, sidebar gradient depth */
+  --panel: #ffffff;
+  --panel-2: #f1f4fc;
+  --border: #e1e6f5;
+  --border-strong: #aab4d6; /* more visible divider, used where a pale --border reads as invisible (e.g. dense data tables) */
+  --text: #131a33;
+  --text-dim: #6b7280;
+  --teal: #22c55e;       /* AccelQ green -- primary accent, success */
+  --amber: #f5a623;
+  --coral: #ff6b6b;
+  --violet: #1e3ae8;     /* AccelQ blue -- secondary accent, gradients */
+  --bg: #f4f6fb;
+  --radius: 10px;
+  --font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+
+  /* Table view density -- app-wide (every <table>, not just Contacts),
+     set from Settings > Appearance and applied via body[data-density]
+     below. These "comfortable" values match what every table already
+     shipped with, so a user who never touches the setting sees no change. */
+  --table-font-size: 13px;
+  --table-header-font-size: 12px;
+  --table-cell-padding-y: 10px;
+  --table-cell-padding-x: 10px;
+  --table-header-padding-y: 8px;
+  --table-header-padding-x: 10px;
+}
+
+* { box-sizing: border-box; }
+
+.hidden { display: none !important; }
+
+body {
+  margin: 0;
+  font-family: var(--font-family);
+  background: var(--bg);
+  color: var(--text);
+}
+
+body[data-density="compact"] {
+  --table-font-size: 12px;
+  --table-header-font-size: 11px;
+  --table-cell-padding-y: 5px;
+  --table-cell-padding-x: 8px;
+  --table-header-padding-y: 4px;
+  --table-header-padding-x: 8px;
+}
+body[data-density="spacious"] {
+  --table-font-size: 14px;
+  --table-header-font-size: 13px;
+  --table-cell-padding-y: 16px;
+  --table-cell-padding-x: 14px;
+  --table-header-padding-y: 12px;
+  --table-header-padding-x: 14px;
+}
+
+#login-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 20% 20%, #3654f5 0%, var(--ink) 60%);
+}
+
+.login-card {
+  width: 360px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 36px 32px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.brand-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--teal), var(--violet));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.brand-name { font-size: 20px; font-weight: 700; letter-spacing: 0.3px; }
+.brand-sub { color: var(--text-dim); font-size: 13px; margin-bottom: 24px; }
+
+label { display: block; font-size: 12px; color: var(--text-dim); margin: 14px 0 6px; }
+
+input, select, textarea, button {
+  font-family: inherit;
+}
+
+input, select, textarea {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+textarea { resize: vertical; min-height: 60px; }
+
+/* Outreach draft / compose content only (contact drafts, follow-ups,
+   templates, sequence steps, Accounts Gem output, the Fresh Email
+   compose box) -- deliberately scoped to this one class rather than
+   changed on the base font vars, since the rest of the app's font and
+   sizes are staying exactly as they are. font-size is fixed at 11pt
+   (matches Word/Outlook's "11" point size) regardless of any per-user
+   Appearance font setting elsewhere. */
+.draft-font {
+  font-family: Calibri, Candara, "Segoe UI", Optima, Arial, sans-serif !important;
+  font-size: 11pt !important;
+  color: #000000 !important;
+}
+
+button {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.btn {
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--teal), var(--violet));
+  color: #ffffff;
+  border: none;
+}
+
+.btn-danger { background: var(--coral); color: #2a0a0a; border: none; }
+.btn-full { width: 100%; margin-top: 20px; }
+.btn-small { padding: 6px 10px; font-size: 12px; }
+
+/* Without this, a disabled button (e.g. "Use this" before a key is saved,
+   or the placeholder Import-source cards) renders pixel-identical to an
+   enabled one -- same gradient, same color -- so clicking it silently does
+   nothing with zero visual sign why. That reads as "the app didn't respond"
+   rather than "this button isn't available yet." */
+.btn:disabled, .btn[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(0.3);
+}
+
+.error-text { color: var(--coral); font-size: 13px; margin-top: 10px; min-height: 16px; }
+.hint { color: var(--text-dim); font-size: 12px; margin-top: 18px; line-height: 1.5; }
+
+.login-row { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; }
+.login-remember { display: flex !important; align-items: center; gap: 6px; margin: 0 !important; font-size: 13px; color: var(--text); cursor: pointer; }
+.login-remember input[type="checkbox"] { width: 14px; height: 14px; margin: 0; cursor: pointer; accent-color: var(--ink); }
+.login-row a, .modal-link { color: var(--ink); font-size: 13px; text-decoration: none; }
+.login-row a:hover, .modal-link:hover { text-decoration: underline; }
+
+#app-shell { display: none; min-height: 100vh; }
+#app-shell.active { display: flex; }
+#login-screen.hidden { display: none; }
+
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: linear-gradient(180deg, var(--ink) 0%, var(--ink-deep) 100%);
+  border-right: none;
+  padding: 20px 14px;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  color: #ffffff;
+  /* Collapsing (see .sidebar-collapse-btn) animates this down to 0 rather
+     than just yanking it away, so the rest of the layout visibly reflows
+     instead of jump-cutting. */
+  transition: width 0.18s ease, padding 0.18s ease;
+}
+
+body[data-sidebar="collapsed"] .sidebar {
+  width: 0;
+  padding-left: 0;
+  padding-right: 0;
+  overflow: hidden;
+}
+
+.sidebar .brand { padding: 0 6px; margin-bottom: 12px; }
+.sidebar .brand-name { color: #ffffff; }
+
+/* Top-right of the sidebar's own content (the brand row), matching the
+   dark sidebar rather than the light .icon-btn used in the topbar -- same
+   shape/sizing language, just themed for the blue background it sits on. */
+.sidebar-collapse-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: rgba(255, 255, 255, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.sidebar-collapse-btn:hover { background: rgba(255, 255, 255, 0.14); color: #ffffff; }
+
+/* Reopen tab: fixed top-left, only shown once the sidebar is collapsed.
+   Uses the same teal->blue brand gradient as .brand-mark/.btn-primary so it
+   reads as "part of this app" rather than a generic floating control. */
+.sidebar-expand-btn {
+  display: none;
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  z-index: 60;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--teal), var(--violet));
+  color: #ffffff;
+  border: none;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(19, 26, 51, 0.22);
+}
+.sidebar-expand-btn:hover { filter: brightness(1.08); }
+body[data-sidebar="collapsed"] .sidebar-expand-btn { display: flex; }
+
+.sidebar-profile {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 20px;
+  cursor: pointer;
+}
+
+.sidebar-profile:hover { border-color: var(--teal); }
+.sidebar-profile-name { font-size: 13px; font-weight: 600; color: #ffffff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-profile-title { font-size: 11px; color: rgba(255, 255, 255, 0.68); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.72);
+  cursor: pointer;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.nav-item:hover { background: rgba(255, 255, 255, 0.1); color: #ffffff; }
+.nav-item.active { background: rgba(255, 255, 255, 0.14); color: var(--teal); font-weight: 600; }
+
+.badge {
+  margin-left: auto;
+  background: var(--coral);
+  color: #ffffff;
+  border-radius: 999px;
+  font-size: 11px;
+  padding: 1px 7px;
+  font-weight: 700;
+}
+
+.sidebar-footer { margin-top: auto; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.18); font-size: 13px; }
+.sidebar-footer,
+.sidebar-footer #current-user-name { color: #ffffff; }
+.sidebar-footer .role-tag { color: rgba(255, 255, 255, 0.68); font-size: 12px; }
+.sidebar-footer .btn { background: rgba(255, 255, 255, 0.1); color: #ffffff; border-color: rgba(255, 255, 255, 0.25); }
+.sidebar-footer .btn:hover { background: rgba(255, 255, 255, 0.18); }
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.topbar {
+  min-height: 60px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 28px;
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.topbar h1 { font-size: 17px; margin: 0; flex-shrink: 0; }
+.topbar-left { display: flex; gap: 14px; align-items: center; flex-shrink: 0; }
+.topbar-right { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; row-gap: 8px; justify-content: flex-end; min-width: 0; }
+#topbar-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; row-gap: 8px; }
+
+/* Toolbar buttons that sit alongside the folded-in filters (Accounts,
+   Contacts) -- smaller than the app's default .btn so title + filters +
+   all six action buttons realistically fit on one header line instead of
+   the default button padding forcing an early wrap. */
+.btn-compact { padding: 7px 11px; font-size: 13px; }
+
+/* Compact filter controls folded directly into the topbar (Accounts,
+   Contacts) so the page title, the search/filter row, and the action
+   buttons all live in one slim header band instead of a separate
+   full-width filter card underneath -- that used to cost an extra card's
+   worth of border/padding/margin before a single table row was visible.
+   Sits inline with the toolbar buttons in #topbar-actions. */
+.topbar-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.topbar-filters input, .topbar-filters select {
+  padding: 7px 10px;
+  font-size: 13px;
+}
+/* Fixed pixel widths, not "auto" -- a <select> with width:auto sizes itself
+   to its widest <option> (a long account/company name can blow one up past
+   300px), which silently broke the single-row layout as soon as real data
+   with long names loaded even though it looked fine with short placeholder
+   text. Fixed widths keep the row's total size predictable regardless of
+   what the options say; long option text just clips inside the box. */
+.topbar-filters input[type="text"] { width: 150px; flex-shrink: 0; }
+.topbar-filters select { width: 106px; flex-shrink: 0; text-overflow: ellipsis; }
+.topbar-filter-count { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+.topbar-divider { width: 1px; align-self: stretch; background: var(--border); margin: 2px 2px; }
+
+/* Streak strip shown beside the page title on Activity Report -- a quick
+   glance at which of the last few workdays have a logged entry. */
+.streak-strip { display: flex; align-items: center; gap: 6px; background: var(--panel-2); border-radius: 999px; padding: 5px 10px; }
+.streak-strip .streak-label { font-size: 11px; color: var(--text-dim); margin-right: 2px; }
+.streak-strip .streak-count { font-size: 11px; color: var(--text-dim); margin-left: 2px; font-weight: 600; }
+.streak-dot { width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+.streak-dot.done { background: #e3f9ec; color: #16a34a; }
+.streak-dot.missing { background: #fdeaea; color: #d64545; }
+
+/* Activity Report summary tiles -- same color language as the table's
+   group headers (mapped=green, emails=blue, linkedin=amber, responses=
+   coral) so the tiles read as totals of those same groups. */
+.tiles-heading { font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.4px; margin: 4px 0 8px; }
+.activity-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.activity-tile { border-radius: 12px; padding: 14px 18px; border: 1px solid transparent; }
+.activity-tile .tile-label { font-size: 12px; }
+.activity-tile .tile-value { font-size: 22px; font-weight: 700; margin-top: 4px; }
+.activity-tile.tile-mapped { background: rgba(34, 197, 94, 0.12); color: #15803d; border-color: rgba(34, 197, 94, 0.35); }
+.activity-tile.tile-emails { background: rgba(30, 58, 232, 0.08); color: #1e3ae8; border-color: rgba(30, 58, 232, 0.3); }
+.activity-tile.tile-linkedin { background: rgba(245, 166, 35, 0.16); color: #b8790f; border-color: rgba(245, 166, 35, 0.4); }
+.activity-tile.tile-responses { background: rgba(255, 107, 107, 0.12); color: #c23636; border-color: rgba(255, 107, 107, 0.35); }
+
+.icon-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.icon-btn:hover { background: var(--panel-2); color: var(--text); border-color: var(--border); }
+.icon-btn.active-icon { color: var(--teal); background: var(--panel-2); border-color: var(--border); }
+
+.content { padding: 26px 28px; overflow-y: auto; }
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+/* The Dashboard's top row of 6 glance cards -- kept to a single row on any
+   reasonably wide screen instead of auto-fit's usual wrap, so the 6th card
+   (Total Contacts) doesn't fall to a lonely second row. Narrower widths
+   still degrade gracefully via the media queries below rather than
+   squeezing 6 columns into a phone-sized viewport. */
+.stat-grid-6 {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+}
+.stat-grid-6 .stat-card { padding: 14px; }
+.stat-grid-6 .stat-card .label { font-size: 11px; }
+.stat-grid-6 .stat-card .value { font-size: 22px; }
+@media (max-width: 1100px) {
+  .stat-grid-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 620px) {
+  .stat-grid-6 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.stat-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card .label { color: var(--text-dim); font-size: 12px; letter-spacing: 0.2px; max-width: calc(100% - 40px); }
+.stat-card .value { font-size: 26px; font-weight: 700; margin-top: 6px; }
+.stat-card .accent-teal { color: var(--teal); }
+.stat-card .accent-amber { color: var(--amber); }
+.stat-card .accent-coral { color: var(--coral); }
+.stat-card .accent-violet { color: var(--violet); }
+
+.stat-card-icon {
+  position: absolute; top: 16px; right: 16px;
+  width: 34px; height: 34px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.stat-card-icon.icon-teal { background: #e3f9ec; color: #16a34a; }
+.stat-card-icon.icon-amber { background: #fff4e0; color: #b8790f; }
+.stat-card-icon.icon-coral { background: #fdeaea; color: #d64545; }
+.stat-card-icon.icon-violet { background: #e7ecff; color: var(--violet); }
+
+.section-label {
+  display: flex; align-items: center; gap: 7px;
+  color: var(--text-dim); font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.4px;
+  margin: 18px 0 10px;
+}
+.section-label:first-child { margin-top: 0; }
+.section-label .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* Follow-up Pipeline stepper on the Dashboard: Fresh Email (amber, the
+   one-off first-touch send) leading into a horizontal, brand-gradient
+   funnel from stage 1 (green) to stage 5 (blue), each stage clickable
+   through to the matching sends in Emailing > Emails. Built with plain
+   flex/CSS -- no chart library needed for six connected dots. */
+.followup-stepper {
+  display: flex; align-items: flex-start; margin-top: 12px;
+  overflow-x: auto; padding-bottom: 4px;
+}
+.followup-stage {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  min-width: 132px; cursor: pointer; padding: 8px 6px; border-radius: 10px;
+  transition: background 0.15s;
+}
+.followup-stage:hover { background: var(--panel-2); }
+.followup-stage-num {
+  width: 38px; height: 38px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--stage-color); color: #ffffff; font-weight: 700; font-size: 15px;
+  box-shadow: 0 4px 10px rgba(19, 26, 51, 0.18);
+}
+/* Fresh Email uses a paper-plane icon instead of a step number -- it isn't
+   "step 0" of the cadence, it's the send that starts it. */
+.followup-stage-icon svg { width: 16px; height: 16px; }
+.followup-stage-label { font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; margin-top: 8px; }
+.followup-stage-sub { font-size: 11px; color: var(--text-dim); margin-top: 8px; white-space: nowrap; }
+.followup-stage-connector { flex: 1 1 24px; height: 2px; background: var(--border); margin-top: 25px; min-width: 20px; }
+
+/* Diamond layout per stage card: Today/This Week pinned to the top-left
+   and top-right corners, This Month/Pending pinned to the bottom-left and
+   bottom-right corners, with the stage's icon+label centered between the
+   two rows -- so each card reads as a small compass around its identity
+   rather than a plain list of numbers. */
+.followup-stage-metrics { display: flex; justify-content: space-between; width: 100%; margin: 6px 0; }
+.followup-stage-metric {
+  display: flex; flex-direction: column; align-items: center; min-width: 44px;
+}
+.followup-stage-metric-value { font-size: 16px; font-weight: 700; color: var(--stage-color); line-height: 1.2; }
+.followup-stage-metric-label { font-size: 9.5px; color: var(--text-dim); margin-top: 2px; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.02em; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.panel h2 { font-size: 15px; margin: 0 0 14px; }
+
+.row-between { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+
+table { width: 100%; border-collapse: collapse; font-size: var(--table-font-size); }
+th { text-align: left; color: var(--text-dim); font-weight: 600; padding: var(--table-header-padding-y) var(--table-header-padding-x); border-bottom: 1px solid var(--border); font-size: var(--table-header-font-size); text-transform: uppercase; }
+td {
+  padding: var(--table-cell-padding-y) var(--table-cell-padding-x);
+  border-bottom: 1px solid var(--border);
+  /* Once a column's width is locked (table-layout:fixed, set by the
+     resizable-table feature below, or just a narrow manually-resized
+     column), an unbreakable long token -- an email address, a full URL --
+     has nowhere to wrap and was overflowing straight past the column edge,
+     visually sitting on top of whatever the next column drew (e.g. the
+     LinkedIn icon landing mid-email-address). Forcing a break keeps every
+     cell's content inside its own column no matter how narrow it gets. */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Status/Draft Type dropdowns (the base select rule below has a fixed
+   10px/12px padding) also shrink or grow with density, so switching
+   density actually changes row height end to end rather than just the
+   empty space around a full-size control. Scoped to select only -- a
+   checkbox or date input picking up the same padding would look broken. */
+td select { padding: var(--table-cell-padding-y) 10px; font-size: var(--table-font-size); }
+tr:last-child td { border-bottom: none; }
+
+/* Manual per-column/per-row resize -- every table gets a thin drag handle
+   on each header's right edge (column width) and each row's right edge
+   (row height), added automatically by enhanceResizableTables() in app.js.
+   Mouse: drag. Keyboard: Tab to a handle, then arrow keys (Shift for a
+   bigger step). Widths/heights are remembered per browser via localStorage,
+   keyed to that table's own header text, so they survive re-renders
+   (filtering, editing a row) but don't leak across unrelated tables. */
+.col-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 2;
+  touch-action: none;
+}
+.col-resize-handle:hover, .col-resize-handle:focus-visible {
+  background: var(--teal);
+  opacity: 0.4;
+  outline: none;
+}
+.row-resize-handle {
+  position: absolute;
+  left: 0;
+  bottom: -4px;
+  width: 100%;
+  height: 8px;
+  cursor: row-resize;
+  z-index: 2;
+  touch-action: none;
+}
+.row-resize-handle:hover, .row-resize-handle:focus-visible {
+  background: var(--teal);
+  opacity: 0.4;
+  outline: none;
+}
+table.resizable-table th { position: relative; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+table.resizable-table td:last-child { position: relative; }
+
+.pill {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.pill-new { background: #e7ecff; color: #3b5bdb; }
+.pill-contacted { background: #eaf7e6; color: #4c9a45; }
+.pill-qualified { background: #e3fbf6; color: #0f9d6e; }
+.pill-proposal { background: #fff4e0; color: #b8790f; }
+.pill-negotiation { background: #e7ecff; color: var(--violet); }
+.pill-won { background: #e3f9ec; color: #16a34a; }
+.pill-lost { background: #fdeaea; color: #d64545; }
+.pill-pending_manager, .pill-pending_hr, .pill-pending { background: #fff4e0; color: #b8790f; }
+.pill-approved { background: #e3f9ec; color: #16a34a; }
+.pill-rejected { background: #fdeaea; color: #d64545; }
+
+.table-scroll { overflow-x: auto; }
+.table-scroll table { min-width: 1080px; }
+.table-scroll th.group { text-align: center; border-left: 1px solid var(--border); }
+.table-scroll th.subhead { font-size: 11px; text-transform: none; text-align: center; }
+.table-scroll td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Activity Report -- same columns/data as the plain table above, just
+   color-coded group headers, status pills, zebra striping, and the Date/
+   Country columns pinned so they stay visible while scrolling right
+   through the wide grouped columns. */
+.activity-table th { text-transform: none; }
+.activity-table td, .activity-table th { padding: 11px 14px; border-right: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); }
+.activity-table td:last-child, .activity-table th:last-child { border-right: none; }
+.activity-table tbody tr:last-child td { border-bottom: none; }
+.activity-table table { border: 1px solid var(--border-strong); border-radius: 8px; border-collapse: separate; border-spacing: 0; }
+/* Theme the header's top row (Date/Country/Campaign/Status/action, plus the
+   already-colored group cells) with a light brand-blue band so the whole
+   row reads as one cohesive header instead of colored islands on white. */
+.activity-table thead th { background: rgba(30, 58, 232, 0.05); color: var(--ink); }
+.activity-table th.group-mapped, .activity-table th.subhead-mapped { background: rgba(34, 197, 94, 0.12); color: #15803d; }
+.activity-table th.group-emails, .activity-table th.subhead-emails { background: rgba(30, 58, 232, 0.08); color: #1e3ae8; }
+.activity-table th.group-linkedin { background: rgba(245, 166, 35, 0.16); color: #b8790f; }
+.activity-table th.group-responses, .activity-table th.subhead-responses { background: rgba(255, 107, 107, 0.12); color: #c23636; }
+.activity-table tbody tr:nth-child(even) td:not(.sticky-col1):not(.sticky-col2) { background: var(--panel-2); }
+.activity-table tbody tr:hover td:not(.sticky-col1):not(.sticky-col2) { background: #eef1ff; }
+.activity-table .sticky-col1, .activity-table .sticky-col2 {
+  position: sticky;
+  background: var(--panel);
+  z-index: 1;
+}
+
+/* Contacts table -- same light brand-blue header band as Activity Report,
+   plus a subtle row hover, so the table reads as themed rather than the
+   plain default table styling above. */
+.contacts-table thead th { background: rgba(30, 58, 232, 0.05); color: var(--ink); }
+.contacts-table tbody tr:hover td { background: var(--panel-2); }
+
+/* Bounds the Contacts table's own scroll region to the viewport instead of
+   letting it grow as tall as the row count -- otherwise its horizontal
+   scrollbar (the "toggle slider" for panning across the wide row/column-
+   resized table) ends up far below the fold on a long list, only reachable
+   by scrolling the whole page down first. Capping the height here keeps
+   that scrollbar always on screen, right under the visible rows. */
+.contacts-table.table-scroll {
+  max-height: calc(100vh - 340px);
+  min-height: 220px;
+  overflow-y: auto;
+}
+.contacts-table.table-scroll thead th { position: sticky; top: 0; z-index: 2; }
+.contacts-table.table-scroll thead .sticky-col1 { z-index: 4; }
+
+/* Compact filter bar (search/status/account/owner row above the table) --
+   tighter padding and shorter inputs than the app's default form controls,
+   so the row of filters reads as a toolbar instead of eating a big vertical
+   slice of the page above the table. */
+.filter-bar-compact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 14px;
+}
+.filter-bar-compact input, .filter-bar-compact select {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+/* Header-row entry point for the per-column show/hide + quick-filter panel
+   (Contacts table) -- sits next to the select-all checkbox so the control
+   lives in the table's own header row rather than a separate toolbar. */
+.col-menu-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+.col-menu-btn:hover { background: rgba(30, 58, 232, 0.12); color: var(--ink); }
+
+/* Email column: send icon, same visual language as the LinkedIn glyph next
+   to it -- a small rounded swatch, brand-colored and clickable when the
+   contact has an email on file, muted and inert when not. */
+.email-icon { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border-radius: 6px; border: none; cursor: pointer; }
+.email-icon-active { color: #1e3ae8; background: rgba(30, 58, 232, 0.1); }
+.email-icon-active:hover { background: rgba(30, 58, 232, 0.2); }
+.email-icon-empty { color: var(--text-dim); background: var(--panel-2); opacity: 0.6; cursor: default; }
+
+/* Status/Draft Type dropdowns were shrinking to fit the column's auto width
+   (the base input/select rule below is width:100%, which has nothing to
+   push against in a narrow table cell) -- wide enough here to always show
+   the longest option in full ("5th Followup") rather than clipping to a
+   sliver with the text invisible. */
+.contacts-table select[data-status-select] { width: auto; min-width: 140px; }
+.contacts-table select[data-draft-mode-select] { width: auto; min-width: 100px; }
+
+/* LinkedIn column: a small "in" glyph instead of a raw URL field -- brand
+   blue and clickable when a URL is on file, muted and inert when not. */
+.linkedin-icon { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 6px; }
+.linkedin-icon-active { color: #0a66c2; background: rgba(10, 102, 194, 0.1); }
+.linkedin-icon-active:hover { background: rgba(10, 102, 194, 0.2); }
+.linkedin-icon-empty { color: var(--text-dim); opacity: 0.35; }
+
+/* Draft column: a small, single-line, click-to-expand chip -- deliberately
+   not a free-flowing text cell, so a long AI-generated draft doesn't blow
+   out the row height or column width. */
+.draft-pill {
+  display: inline-block;
+  max-width: 160px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--panel-2);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  text-align: left;
+}
+.draft-pill:hover { border-color: var(--teal); color: #15803d; }
+
+/* Contacts table's checkbox column stays pinned to the left edge while
+   scrolling through the wide row of columns to its right (Date/LinkedIn/
+   Draft/etc added it well past one screen width) -- same sticky technique
+   as Activity Report's pinned columns, just a single narrow column here. */
+.contacts-table .sticky-col1 {
+  position: sticky;
+  left: 0;
+  background: var(--panel);
+  z-index: 1;
+  border-right: 1px solid var(--border-strong);
+}
+.contacts-table thead .sticky-col1 { z-index: 3; background: rgba(30, 58, 232, 0.05); color: var(--ink); }
+.activity-table thead .sticky-col1, .activity-table thead .sticky-col2 { z-index: 3; background: rgba(30, 58, 232, 0.05); color: var(--ink); }
+.activity-table .sticky-col1 { left: 0; min-width: 100px; }
+.activity-table .sticky-col2 { left: 100px; min-width: 150px; max-width: 210px; white-space: normal; }
+
+tr.row-click { cursor: pointer; }
+tr.row-click:hover td { background: var(--panel-2); }
+.stat-card.clickable { cursor: pointer; transition: background 0.15s; }
+.stat-card.clickable:hover { background: var(--panel-2); }
+
+.kanban { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 8px; }
+.kanban-col { min-width: 220px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; flex: 1; }
+.kanban-col h3 { font-size: 12px; text-transform: uppercase; color: var(--text-dim); margin: 0 0 10px; display: flex; justify-content: space-between; }
+.lead-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 10px; font-size: 13px; }
+.lead-card .name { font-weight: 600; margin-bottom: 4px; }
+.lead-card .value { color: var(--teal); font-size: 12px; margin-bottom: 6px; }
+.lead-card select { font-size: 11px; padding: 4px 6px; }
+
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(6,8,16,0.7);
+  display: flex; align-items: center; justify-content: center; z-index: 50;
+  padding: 24px; box-sizing: border-box;
+}
+.modal-backdrop.hidden { display: none; }
+/* While a modal is minimized, the backdrop shouldn't block the rest of the
+   app -- only the small floating title bar stays clickable (to restore). */
+.modal-backdrop.backdrop-minimized { background: transparent; pointer-events: none; }
+.modal-backdrop.backdrop-minimized .modal { pointer-events: auto; }
+
+.modal {
+  /* Scale with the viewport instead of a fixed px width, so the dialog uses
+     the space actually available on the screen rather than always opening
+     at the same cramped size regardless of display. Caps keep it from
+     stretching absurdly wide on large monitors. This is a starting size
+     only -- the window is user-resizable (drag the bottom-right corner)
+     and user-draggable (by the title bar), like a desktop window. */
+  width: min(560px, 92vw);
+  height: min(560px, 85vh);
+  min-width: 320px;
+  min-height: 200px;
+  max-width: 96vw;
+  max-height: 94vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  box-sizing: border-box;
+  overflow: hidden;
+  /* Positioning context for the resize handle below. Flex items can be
+     position:relative without leaving the flex layout. */
+  position: relative;
+}
+.modal.modal-wide { width: min(820px, 94vw); height: min(640px, 88vh); }
+
+/* Free resizing is implemented by hand (in app.js) rather than via the
+   native CSS `resize` property: `.modal` is a flex item of the centering
+   backdrop, and browsers don't reliably support native resize on flex
+   items -- the drag handle shows but doesn't actually change the size. A
+   custom handle + mousemove works consistently everywhere. */
+.modal-resize-handle {
+  position: absolute; right: 0; bottom: 0;
+  width: 20px; height: 20px;
+  cursor: nwse-resize;
+  z-index: 5;
+}
+.modal-resize-handle::before {
+  content: "";
+  position: absolute; right: 5px; bottom: 5px;
+  width: 9px; height: 9px;
+  border-right: 2px solid var(--border);
+  border-bottom: 2px solid var(--border);
+}
+.modal.modal-maximized .modal-resize-handle,
+.modal.modal-minimized .modal-resize-handle {
+  display: none;
+}
+
+.modal-titlebar {
+  display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-2);
+  border-radius: var(--radius) var(--radius) 0 0;
+  cursor: move;
+  user-select: none;
+  flex: 0 0 auto;
+}
+.modal-ctrl {
+  width: 22px; height: 22px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text-dim);
+  font-size: 13px; line-height: 1;
+  cursor: pointer;
+}
+.modal-ctrl:hover { background: var(--border); color: var(--text); }
+.modal-ctrl-close:hover { background: #d64545; border-color: #d64545; color: #fff; }
+.modal-ctrl-max::before {
+  content: ""; display: block; width: 9px; height: 9px;
+  border: 1.4px solid currentColor; border-radius: 1px;
+}
+
+.modal-content {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1 1 auto;
+  box-sizing: border-box;
+  min-height: 0;
+}
+.modal-content h2 { margin-top: 0; font-size: 16px; }
+.modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+
+/* Maximize: fill almost the whole viewport. app.js clears any manual
+   drag/resize inline styles when engaging this, so it always resolves back
+   to flex-centered at this larger size regardless of prior state. */
+.modal.modal-maximized {
+  width: 96vw !important; height: 94vh !important;
+}
+
+/* Minimize: collapse down to just the title bar, parked bottom-right so the
+   rest of the app stays usable; click it again to restore. Form content
+   underneath is only hidden, never destroyed, so nothing typed is lost. */
+.modal.modal-minimized {
+  position: fixed !important;
+  right: 20px; bottom: 20px; left: auto !important; top: auto !important;
+  width: 220px !important; height: auto !important;
+  min-width: 0; min-height: 0;
+  margin: 0 !important;
+}
+.modal.modal-minimized .modal-content { display: none; }
+.modal.modal-minimized .modal-titlebar { border-radius: var(--radius); border-bottom: none; cursor: pointer; }
+
+@media (max-width: 600px) {
+  .modal-backdrop { padding: 10px; }
+  .modal { width: 100%; height: 90vh; }
+  .modal-resize-handle { display: none; }
+  .modal-content { padding: 18px; }
+}
+
+.chart-grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 20px; }
+@media (max-width: 900px) { .chart-grid { grid-template-columns: 1fr; } }
+
+.leave-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap: 14px; margin-bottom: 20px; }
+
+.tag-role {
+  display: inline-block; padding: 1px 8px; border-radius: 6px; font-size: 11px;
+  background: var(--panel-2); color: var(--text-dim); border: 1px solid var(--border);
+}
+
+.toast {
+  position: fixed; bottom: 20px; right: 20px; background: var(--panel);
+  border: 1px solid var(--border); padding: 12px 18px; border-radius: 8px; font-size: 13px;
+  box-shadow: 0 6px 20px rgba(19, 26, 51, 0.14);
+  z-index: 100;
+}
+.toast.hidden { display: none; }
+.toast.error { border-color: var(--coral); color: var(--coral); }
+.toast.success { border-color: var(--teal); color: var(--teal); }
+
+.empty-state { color: var(--text-dim); font-size: 13px; padding: 20px 0; text-align: center; }
+
+.settings-tabs { display: flex; gap: 6px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+.settings-tab {
+  padding: 10px 16px; font-size: 13px; font-weight: 600; color: var(--text-dim);
+  cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.settings-tab.active { color: var(--teal); border-bottom-color: var(--teal); }
+
+.color-swatch-row { display: flex; align-items: center; gap: 12px; }
+.color-swatch-row input[type="color"] {
+  width: 42px; height: 42px; padding: 2px; border-radius: 8px; cursor: pointer;
+}
+.font-preview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 6px; }
+.font-preview-card {
+  border: 1px solid var(--border); border-radius: 8px; padding: 12px; cursor: pointer;
+  background: var(--panel-2);
+}
+.font-preview-card.selected { border-color: var(--teal); box-shadow: 0 0 0 1px var(--teal); }
+.font-preview-card .sample { font-size: 15px; margin-top: 4px; }
+.font-preview-card .name { font-size: 11px; color: var(--text-dim); text-transform: uppercase; }
+
+.integration-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 14px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px;
+}
+.integration-card.unsupported { opacity: 0.55; }
+.integration-card .meta { flex: 1; min-width: 0; }
+.integration-card .meta .name { font-weight: 600; font-size: 14px; }
+.integration-card .meta .desc { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+.integration-card input[type="password"], .integration-card input[type="text"] { width: 220px; }
+.integration-card .row { display: flex; align-items: center; gap: 8px; }
+.pill-active { background: #e3f9ec; color: #16a34a; }
+.pill-inactive { background: var(--panel-2); color: var(--text-dim); }
