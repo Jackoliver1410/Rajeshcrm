@@ -626,7 +626,6 @@ async function tryResumeSession() {
 // A tab not listed here (Dashboard, Contacts, Accounts, Leaves/WFH) is
 // always visible -- feature toggles only apply to the six gated features.
 const NAV_FEATURE_KEYS = {
-  salesforce: "salesforce",
   emailing: "emailing",
   activity: "activity_report",
   leads: "leads",
@@ -824,7 +823,6 @@ const VIEW_TITLES = {
   accounts: "Accounts",
   activity: "Activity Report",
   leave: "Leaves / WFH",
-  salesforce: "Salesforce",
   emailing: "Emailing",
   settings: "Settings",
 };
@@ -842,7 +840,6 @@ function switchView(view) {
     accounts: renderAccounts,
     activity: renderActivity,
     leave: renderLeave,
-    salesforce: renderSalesforce,
     emailing: renderEmailing,
     settings: renderSettings,
   };
@@ -3087,9 +3084,10 @@ let accountsSelected = new Set();
 let accountsFilters = { search: "", industry: "", ownerId: "", scoreBand: "" };
 
 // Which sub-tab of the Accounts page is showing -- "list" (the accounts
-// table) or "gem" (Accounts Gem, merged in here rather than living as its
-// own sidebar item). Module-level so it survives the re-renders every filter
-// change and Gem interaction triggers.
+// table), "gem" (Accounts Gem), or "salesforce" (Salesforce pull/push), all
+// merged in here rather than living as their own sidebar items. Module-level
+// so it survives the re-renders every filter change and Gem/Salesforce
+// interaction triggers.
 let accountsTab = "list";
 
 // Same accounts_gem feature_access key that used to gate the standalone
@@ -3099,6 +3097,15 @@ let accountsTab = "list";
 function hasAccountsGemAccess() {
   if (state.user.role === "admin") return true;
   return (state.user.feature_access || {}).accounts_gem !== false;
+}
+
+// Same treatment for the salesforce feature_access key, which used to gate
+// the standalone "Salesforce" sidebar item and now gates this sub-tab
+// instead -- unchanged from an admin's point of view in Settings > Access
+// Control, still one checkbox that hides/shows it per user.
+function hasSalesforceAccess() {
+  if (state.user.role === "admin") return true;
+  return (state.user.feature_access || {}).salesforce !== false;
 }
 
 const INTENT_SCORE_BAND_OPTIONS = [
@@ -3179,31 +3186,35 @@ async function openCompanyProfileModal() {
   });
 }
 
-// Dispatcher for the Accounts sidebar item -- shows either the accounts
-// table (accountsTab === "list") or Accounts Gem (accountsTab === "gem"),
-// as sub-tabs of one page rather than two separate nav items. Accounts Gem
-// keeps its own feature_access gate (accounts_gem); if a user without that
-// access somehow has the tab selected (e.g. an admin toggled it off for
-// them mid-session), fall back to the list rather than rendering a tab they
-// shouldn't see.
+// Dispatcher for the Accounts sidebar item -- shows the accounts table
+// (accountsTab === "list"), Accounts Gem ("gem"), or Salesforce
+// ("salesforce"), as sub-tabs of one page rather than three separate nav
+// items. Accounts Gem and Salesforce each keep their own feature_access
+// gate; if a user without that access somehow has the tab selected (e.g. an
+// admin toggled it off for them mid-session), fall back to the list rather
+// than rendering a tab they shouldn't see.
 function renderAccounts() {
   if (accountsTab === "gem" && hasAccountsGemAccess()) {
     renderAccountsGem();
+  } else if (accountsTab === "salesforce" && hasSalesforceAccess()) {
+    renderSalesforce();
   } else {
     accountsTab = "list";
     renderAccountsListView();
   }
 }
 
-// data-accounts-tab sub-tab bar shown atop the Accounts page content when
-// the signed-in user has access to Accounts Gem -- reuses the same
-// .settings-tabs/.settings-tab pattern as Settings, Salesforce, and Emailing
-// so it looks consistent with the rest of the app's sub-tab UI.
+// data-accounts-tab sub-tab bar shown atop the Accounts page content --
+// reuses the same .settings-tabs/.settings-tab pattern as Settings and
+// Emailing so it looks consistent with the rest of the app's sub-tab UI.
+// Accounts Gem and Salesforce each only appear once the signed-in user has
+// that feature's access.
 function accountsTabBarHtml() {
   return `
     <div class="settings-tabs" style="margin-bottom:16px">
       <div class="settings-tab ${accountsTab === "list" ? "active" : ""}" data-accounts-tab="list">All Accounts</div>
-      <div class="settings-tab ${accountsTab === "gem" ? "active" : ""}" data-accounts-tab="gem">Accounts Gem</div>
+      ${hasAccountsGemAccess() ? `<div class="settings-tab ${accountsTab === "gem" ? "active" : ""}" data-accounts-tab="gem">Accounts Gem</div>` : ""}
+      ${hasSalesforceAccess() ? `<div class="settings-tab ${accountsTab === "salesforce" ? "active" : ""}" data-accounts-tab="salesforce">Salesforce</div>` : ""}
     </div>
   `;
 }
@@ -3264,7 +3275,7 @@ function renderAccountsListView() {
 
   const root = document.getElementById("view-root");
   root.innerHTML = `
-    ${hasAccountsGemAccess() ? accountsTabBarHtml() : ""}
+    ${(hasAccountsGemAccess() || hasSalesforceAccess()) ? accountsTabBarHtml() : ""}
     ${accountsScopeFilter ? `
       <div class="modal-actions" style="justify-content:flex-start;margin-bottom:10px">
         <span class="pill pill-active">Showing companies for this scope</span>
@@ -7530,22 +7541,33 @@ let sfPullResults = [];
 let sfPullSelected = new Set();
 let sfPushSelected = new Set();
 
+// Rendered as the "salesforce" sub-tab of the Accounts page (see
+// renderAccounts()'s dispatcher above) rather than its own sidebar item --
+// still gated by the same salesforce feature_access key via
+// hasSalesforceAccess(), just controlling a tab's visibility now instead of
+// a nav item's. The accountsTabBarHtml() header + wireAccountsTabBar() call
+// in every branch below is what keeps the All Accounts / Accounts Gem /
+// Salesforce tabs on screen no matter which of Salesforce's own states
+// (loading, not connected, connected) is showing.
 async function renderSalesforce() {
   document.getElementById("topbar-actions").innerHTML = "";
   const root = document.getElementById("view-root");
-  root.innerHTML = `<div class="panel"><div class="empty-state">Loading…</div></div>`;
+  root.innerHTML = `${accountsTabBarHtml()}<div class="panel"><div class="empty-state">Loading…</div></div>`;
+  wireAccountsTabBar(root);
 
   let status;
   try {
     status = await api("/api/salesforce/status");
   } catch (err) {
-    root.innerHTML = `<div class="panel"><div class="empty-state">${err.message}</div></div>`;
+    root.innerHTML = `${accountsTabBarHtml()}<div class="panel"><div class="empty-state">${err.message}</div></div>`;
+    wireAccountsTabBar(root);
     return;
   }
 
   if (!status.connected) {
     const isAdmin = state.user.role === "admin";
     root.innerHTML = `
+      ${accountsTabBarHtml()}
       <div class="panel">
         <div class="empty-state">
           Salesforce isn't connected yet. ${isAdmin ? "Connect it in Settings → Integrations — you'll need a Connected App set up on the Salesforce side first." : "Ask an admin to connect it in Settings → Integrations."}
@@ -7553,12 +7575,14 @@ async function renderSalesforce() {
         ${isAdmin ? `<div class="modal-actions" style="justify-content:flex-start;margin-top:10px"><button class="btn btn-primary btn-small" id="sf-goto-settings">Go to Settings</button></div>` : ""}
       </div>
     `;
+    wireAccountsTabBar(root);
     const btn = document.getElementById("sf-goto-settings");
     if (btn) btn.addEventListener("click", () => { settingsTab = "integrations"; switchView("settings"); });
     return;
   }
 
   root.innerHTML = `
+    ${accountsTabBarHtml()}
     <div class="panel">
       <div class="settings-tabs" style="margin-bottom:16px">
         <div class="settings-tab ${sfTab === "pull" ? "active" : ""}" data-sf-tab="pull">Pull from Salesforce</div>
@@ -7567,6 +7591,7 @@ async function renderSalesforce() {
       <div id="sf-body"></div>
     </div>
   `;
+  wireAccountsTabBar(root);
   root.querySelectorAll("[data-sf-tab]").forEach((el) => {
     el.addEventListener("click", () => { sfTab = el.dataset.sfTab; renderSalesforce(); });
   });
