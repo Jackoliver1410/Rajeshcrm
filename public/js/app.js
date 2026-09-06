@@ -4014,6 +4014,13 @@ async function importSelectedLinkedInRows(kind) {
 // matter which of the three paths it came in through.
 let apolloListRows = [];
 let apolloListSelected = new Set();
+// Apollo returns list contents a page at a time (see the per_page comment in
+// lib/apollo.js's getListContacts/getListCompanies) -- these track where
+// we are so "Load more" can fetch the next page and append to what's
+// already loaded, and so the header can show "X of TOTAL" instead of
+// silently capping out at one page with no indication more rows exist.
+let apolloListPage = 1;
+let apolloListTotal = 0;
 
 function openApolloListImportModal(kind) {
   const isAccounts = kind === "accounts";
@@ -4026,9 +4033,11 @@ function openApolloListImportModal(kind) {
     <div class="modal-actions">
       <button type="button" class="btn" onclick="closeModal()">Close</button>
     </div>
-  `);
+  `, { wide: true });
   apolloListRows = [];
   apolloListSelected = new Set();
+  apolloListPage = 1;
+  apolloListTotal = 0;
 
   api(`/api/prospecting/apollo-lists?modality=${isAccounts ? "accounts" : "contacts"}`)
     .then((data) => {
@@ -4055,20 +4064,39 @@ function openApolloListImportModal(kind) {
     });
 }
 
-async function loadApolloListContents(kind) {
+// `append`: false for the initial Load click (resets to page 1, replaces
+// apolloListRows) or true for "Load more" (fetches the next page and
+// concats onto what's already showing). Existing selections and their
+// indices survive an append since concat only ever adds rows to the end.
+async function loadApolloListContents(kind, append = false) {
   const isAccounts = kind === "accounts";
   const listId = document.getElementById("apollo-list-select").value;
   const resultsEl = document.getElementById("apollo-list-results");
-  resultsEl.innerHTML = `<div class="empty-state">Loading…</div>`;
-  apolloListSelected = new Set();
+  if (append) {
+    apolloListPage += 1;
+    const loadMoreBtn = document.getElementById("apollo-list-load-more-btn");
+    if (loadMoreBtn) { loadMoreBtn.disabled = true; loadMoreBtn.textContent = "Loading…"; }
+  } else {
+    resultsEl.innerHTML = `<div class="empty-state">Loading…</div>`;
+    apolloListSelected = new Set();
+    apolloListPage = 1;
+  }
   try {
     const data = isAccounts
-      ? await api("/api/prospecting/list-companies", { method: "POST", body: { list_id: listId } })
-      : await api("/api/prospecting/list-people", { method: "POST", body: { list_id: listId } });
-    apolloListRows = isAccounts ? data.companies : data.people;
+      ? await api("/api/prospecting/list-companies", { method: "POST", body: { list_id: listId, page: apolloListPage } })
+      : await api("/api/prospecting/list-people", { method: "POST", body: { list_id: listId, page: apolloListPage } });
+    const page = isAccounts ? data.companies : data.people;
+    apolloListRows = append ? apolloListRows.concat(page) : page;
+    apolloListTotal = data.total ?? apolloListRows.length;
     renderApolloListResults(kind);
   } catch (err) {
-    resultsEl.innerHTML = `<div class="empty-state">${err.message}</div>`;
+    if (append) {
+      apolloListPage -= 1;
+      toast(err.message, "error");
+      renderApolloListResults(kind);
+    } else {
+      resultsEl.innerHTML = `<div class="empty-state">${err.message}</div>`;
+    }
   }
 }
 
@@ -4080,48 +4108,82 @@ function renderApolloListResults(kind) {
     resultsEl.innerHTML = `<div class="empty-state">That list is empty.</div>`;
     return;
   }
+  const allSelected = apolloListRows.length > 0 && apolloListRows.every((_, i) => apolloListSelected.has(i));
+  const hasMore = apolloListTotal > apolloListRows.length;
   resultsEl.innerHTML = `
     <div class="modal-actions" style="justify-content:flex-start;margin-bottom:10px">
       <button type="button" class="btn btn-primary btn-small" id="apollo-list-import-btn">Import selected as ${isAccounts ? "Accounts" : "Contacts"}</button>
       <span id="apollo-list-selected-count" style="font-size:12px;color:var(--text-dim);align-self:center">${apolloListSelected.size} selected</span>
     </div>
+    <div class="table-scroll">
     <table>
       ${isAccounts ? `
-        <thead><tr><th></th><th>Company</th><th>Website</th><th>Industry</th></tr></thead>
+        <thead><tr>
+          <th><input type="checkbox" id="apollo-list-select-all" ${allSelected ? "checked" : ""} /></th>
+          <th>Company</th><th>Website</th><th>Industry</th><th>Employees</th><th>Revenue</th><th>Phone</th><th>Address</th><th>LinkedIn</th>
+        </tr></thead>
         <tbody>
           ${apolloListRows.map((c, i) => `
             <tr>
               <td><input type="checkbox" data-select="${i}" ${apolloListSelected.has(i) ? "checked" : ""} /></td>
-              <td>${c.name}</td>
-              <td>${c.website || "—"}</td>
-              <td>${c.industry || "—"}</td>
+              <td>${escapeAttr(c.name)}</td>
+              <td>${escapeAttr(c.website || "—")}</td>
+              <td>${escapeAttr(c.industry || "—")}</td>
+              <td>${c.employees ?? "—"}</td>
+              <td>${escapeAttr(c.revenue || "—")}</td>
+              <td>${escapeAttr(c.phone || "—")}</td>
+              <td>${escapeAttr(c.address || "—")}</td>
+              <td>${c.linkedin_url ? `<a href="${escapeAttr(c.linkedin_url)}" target="_blank" rel="noopener">View</a>` : "—"}</td>
             </tr>
           `).join("")}
         </tbody>
       ` : `
-        <thead><tr><th></th><th>Name</th><th>Title</th><th>Company</th><th>Email</th></tr></thead>
+        <thead><tr>
+          <th><input type="checkbox" id="apollo-list-select-all" ${allSelected ? "checked" : ""} /></th>
+          <th>Name</th><th>Title</th><th>Company</th><th>Location</th><th>Email</th><th>Phone</th><th>LinkedIn</th>
+        </tr></thead>
         <tbody>
           ${apolloListRows.map((p, i) => `
             <tr>
               <td><input type="checkbox" data-select="${i}" ${apolloListSelected.has(i) ? "checked" : ""} /></td>
-              <td>${p.first_name} ${p.last_name}</td>
-              <td>${p.title || "—"}</td>
-              <td>${p.organization_name || "—"}</td>
-              <td>${p.email || "—"}</td>
+              <td>${escapeAttr(`${p.first_name} ${p.last_name}`.trim())}</td>
+              <td>${escapeAttr(p.title || "—")}</td>
+              <td>${escapeAttr(p.organization_name || "—")}</td>
+              <td>${escapeAttr(p.location || "—")}</td>
+              <td>${escapeAttr(p.email || "—")}</td>
+              <td>${escapeAttr(p.phone || "—")}</td>
+              <td>${p.linkedin_url ? `<a href="${escapeAttr(p.linkedin_url)}" target="_blank" rel="noopener">View</a>` : "—"}</td>
             </tr>
           `).join("")}
         </tbody>
       `}
     </table>
+    </div>
+    <div class="modal-actions" style="justify-content:space-between;margin-top:10px">
+      <span style="font-size:12px;color:var(--text-dim)">Showing ${apolloListRows.length}${apolloListTotal ? ` of ${apolloListTotal}` : ""}</span>
+      ${hasMore ? `<button type="button" class="btn btn-small" id="apollo-list-load-more-btn">Load more</button>` : ""}
+    </div>
   `;
+  const selectAllEl = document.getElementById("apollo-list-select-all");
+  if (selectAllEl) {
+    selectAllEl.addEventListener("change", (e) => {
+      if (e.target.checked) apolloListRows.forEach((_, i) => apolloListSelected.add(i));
+      else apolloListSelected.clear();
+      renderApolloListResults(kind);
+    });
+  }
   resultsEl.querySelectorAll("[data-select]").forEach((cb) => {
     cb.addEventListener("change", () => {
       const i = Number(cb.dataset.select);
       if (cb.checked) apolloListSelected.add(i); else apolloListSelected.delete(i);
       const countEl = document.getElementById("apollo-list-selected-count");
       if (countEl) countEl.textContent = `${apolloListSelected.size} selected`;
+      const selectAll = document.getElementById("apollo-list-select-all");
+      if (selectAll) selectAll.checked = apolloListRows.every((_, j) => apolloListSelected.has(j));
     });
   });
+  const loadMoreBtn = document.getElementById("apollo-list-load-more-btn");
+  if (loadMoreBtn) loadMoreBtn.addEventListener("click", () => loadApolloListContents(kind, true));
   document.getElementById("apollo-list-import-btn").addEventListener("click", () => importSelectedApolloListRows(kind));
 }
 
@@ -4135,7 +4197,13 @@ async function importSelectedApolloListRows(kind) {
     const row = apolloListRows[i];
     try {
       if (isAccounts) {
-        await api("/api/prospecting/import-company", { method: "POST", body: { name: row.name, website: row.website, industry: row.industry, phone: row.phone } });
+        await api("/api/prospecting/import-company", {
+          method: "POST",
+          body: {
+            name: row.name, website: row.website, industry: row.industry, phone: row.phone,
+            revenue: row.revenue, address: row.address, linkedin_url: row.linkedin_url,
+          },
+        });
       } else {
         await api("/api/prospecting/import-contact", {
           method: "POST",
@@ -7448,7 +7516,13 @@ function openApolloSearchModal(kind) {
             },
           });
         } else {
-          await api("/api/prospecting/import-company", { method: "POST", body: { name: row.name, website: row.website, industry: row.industry, phone: row.phone } });
+          await api("/api/prospecting/import-company", {
+            method: "POST",
+            body: {
+              name: row.name, website: row.website, industry: row.industry, phone: row.phone,
+              revenue: row.revenue, address: row.address, linkedin_url: row.linkedin_url,
+            },
+          });
         }
         count++;
       } catch (err) {
