@@ -5936,6 +5936,7 @@ function renderUsersAdminView(body, users, allUsers, perms) {
                 <td style="white-space:nowrap">
                   <button type="button" class="btn btn-small" data-edit-user="${u.id}">Edit</button>
                   <button type="button" class="btn btn-small" data-reset-password="${u.id}">Reset password</button>
+                  ${u.id !== state.user.id ? `<button type="button" class="btn btn-small btn-danger" data-delete-user="${u.id}" title="Delete user" aria-label="Delete user">🗑</button>` : ""}
                 </td>
               </tr>
             `).join("")}
@@ -5956,6 +5957,12 @@ function renderUsersAdminView(body, users, allUsers, perms) {
     btn.addEventListener("click", () => {
       const u = users.find((x) => x.id === Number(btn.dataset.resetPassword));
       openResetPasswordModal(u);
+    });
+  });
+  body.querySelectorAll("[data-delete-user]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const u = users.find((x) => x.id === Number(btn.dataset.deleteUser));
+      openDeleteUserModal(u);
     });
   });
   wireFieldPermissionsPanel(body, perms);
@@ -6327,6 +6334,55 @@ function openResetPasswordModal(u) {
     } finally {
       btn.disabled = false;
     }
+  });
+}
+
+// Deleting a user is permanent, so unlike every other admin action here it
+// asks for something a click alone can't provide: the ADMIN'S OWN current
+// password, re-entered right before the delete goes through (mirrors the
+// self-service password-change flow, not the no-password "Reset password"
+// override above). The backend (DELETE /api/users/:id) checks that password
+// against the signed-in admin's own hash and rejects self-delete / deleting
+// the last remaining admin regardless of what the UI allows.
+function openDeleteUserModal(u) {
+  openModal(`
+    <h2>Delete ${u.name}?</h2>
+    <div class="hint" style="margin-top:0">This permanently removes their login. It can't be undone. Records they owned are unassigned rather than deleted.</div>
+    <label>Confirm your password</label>
+    <input type="password" id="du-password" autocomplete="current-password" placeholder="Your current password" />
+    <div class="error-text" id="du-error"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+      <button type="button" class="btn btn-danger" id="du-confirm-btn">Delete user</button>
+    </div>
+  `);
+
+  const passwordEl = document.getElementById("du-password");
+  passwordEl.focus();
+  const errEl = document.getElementById("du-error");
+
+  document.getElementById("du-confirm-btn").addEventListener("click", async () => {
+    const password = passwordEl.value;
+    errEl.textContent = "";
+    if (!password) {
+      errEl.textContent = "Enter your password to confirm.";
+      return;
+    }
+    const btn = document.getElementById("du-confirm-btn");
+    btn.disabled = true;
+    try {
+      await api(`/api/users/${u.id}`, { method: "DELETE", body: { password } });
+      toast(`${u.name} deleted`);
+      closeModal();
+      renderUsersSettings();
+    } catch (err) {
+      errEl.textContent = err.message;
+      btn.disabled = false;
+    }
+  });
+
+  passwordEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); document.getElementById("du-confirm-btn").click(); }
   });
 }
 
