@@ -828,6 +828,11 @@ const VIEW_TITLES = {
 };
 
 function switchView(view) {
+  // An open Contacts header-filter popover lives on <body>, outside
+  // #view-root, specifically so it survives that view's own re-renders --
+  // which also means it has to be closed by hand on the way to any other
+  // view, or it'd be left floating over whatever's rendered next.
+  if (typeof closeContactHeaderFilterPopover === "function") closeContactHeaderFilterPopover();
   state.view = view;
   document.querySelectorAll(".nav-item").forEach((el) => el.classList.toggle("active", el.dataset.view === view));
   document.getElementById("settings-gear-btn").classList.toggle("active-icon", view === "settings");
@@ -1979,11 +1984,132 @@ function contactsOwnerFilterOptions() {
   return state.users.slice().sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// The little inline filter attached directly to a Contacts table column
+// header -- a small caret button next to the column's own label that toggles
+// a floating popover holding just that column's control (a text box for
+// Name, a <select> for the enum-ish columns, two date inputs for Date).
+// Deliberately NOT a row of filter controls living in a bar above the table
+// -- per explicit feedback, the filters belong "in that row itself" (the
+// table's own header row), not floating disconnected from the columns they
+// narrow down.
+//
+// The popover is appended to <body>, not into #view-root -- renderContacts()
+// replaces #view-root wholesale on every keystroke/selection, and a popover
+// living outside that subtree survives each of those re-renders instead of
+// being wiped (and losing focus) along with the table it's anchored to.
+let contactsOpenHeaderFilterCol = null;
+let contactsHeaderFilterPopoverEl = null;
+
+function contactHeaderFilterIsActive(colId) {
+  if (colId === "date") return Boolean(contactsFilters.dateFrom || contactsFilters.dateTo);
+  const fieldMap = { name: "search", status: "status", account: "accountId", title: "title", draftType: "draftType", owner: "ownerId" };
+  const field = fieldMap[colId];
+  return Boolean(field && contactsFilters[field]);
+}
+
+function contactHeaderFilterControlHtml(colId) {
+  if (colId === "name") {
+    return `<input type="text" data-hf-input="search" placeholder="Search name, title, email…" value="${escapeAttr(contactsFilters.search)}" />`;
+  }
+  if (colId === "status") {
+    return `<select data-hf-input="status">
+      <option value="">All statuses</option>
+      ${CONTACT_STATUSES.map((s) => `<option value="${s}" ${contactsFilters.status === s ? "selected" : ""}>${s}</option>`).join("")}
+    </select>`;
+  }
+  if (colId === "account") {
+    return `<select data-hf-input="accountId">
+      <option value="">All accounts</option>
+      ${state.accounts.slice().sort((a, b) => a.name.localeCompare(b.name)).map((a) => `<option value="${a.id}" ${contactsFilters.accountId === String(a.id) ? "selected" : ""}>${a.name}</option>`).join("")}
+    </select>`;
+  }
+  if (colId === "title") {
+    const titles = Array.from(new Set(state.contacts.map((c) => c.title).filter(Boolean))).sort();
+    return `<select data-hf-input="title">
+      <option value="">All titles</option>
+      ${titles.map((t) => `<option value="${escapeAttr(t)}" ${contactsFilters.title === t ? "selected" : ""}>${t}</option>`).join("")}
+    </select>`;
+  }
+  if (colId === "draftType") {
+    return `<select data-hf-input="draftType">
+      <option value="">All draft types</option>
+      <option value="auto" ${contactsFilters.draftType === "auto" ? "selected" : ""}>Auto</option>
+      <option value="manual" ${contactsFilters.draftType === "manual" ? "selected" : ""}>Manual</option>
+      <option value="none" ${contactsFilters.draftType === "none" ? "selected" : ""}>— (none)</option>
+    </select>`;
+  }
+  if (colId === "owner") {
+    const opts = contactsOwnerFilterOptions();
+    return `<select data-hf-input="ownerId">
+      <option value="">All owners</option>
+      ${opts.map((u) => `<option value="${u.id}" ${contactsFilters.ownerId === String(u.id) ? "selected" : ""}>${u.id === state.user.id ? "Just me" : u.name}</option>`).join("")}
+    </select>`;
+  }
+  if (colId === "date") {
+    return `
+      <div style="font-size:11px;color:var(--text-dim);margin-bottom:2px">Created on/after</div>
+      <input type="date" data-hf-input="dateFrom" value="${contactsFilters.dateFrom}" />
+      <div style="font-size:11px;color:var(--text-dim);margin:8px 0 2px">Created on/before</div>
+      <input type="date" data-hf-input="dateTo" value="${contactsFilters.dateTo}" />
+    `;
+  }
+  return "";
+}
+
+// Renders a header <th>'s inner content as "Label ▾", with the caret's
+// active/inactive styling reflecting whether that column currently has a
+// filter applied.
+function thFilterHtml(colId, label) {
+  const active = contactHeaderFilterIsActive(colId);
+  return `<span class="th-filter">${label}<button type="button" class="th-filter-btn${active ? " th-filter-btn-active" : ""}" data-th-filter-btn="${colId}" title="Filter ${label}" aria-label="Filter ${label}">▾</button></span>`;
+}
+
+function closeContactHeaderFilterPopover() {
+  if (contactsHeaderFilterPopoverEl) {
+    contactsHeaderFilterPopoverEl.remove();
+    contactsHeaderFilterPopoverEl = null;
+  }
+  contactsOpenHeaderFilterCol = null;
+  document.removeEventListener("mousedown", contactHeaderFilterOutsideClick, true);
+}
+
+function contactHeaderFilterOutsideClick(e) {
+  if (!contactsHeaderFilterPopoverEl) return;
+  if (contactsHeaderFilterPopoverEl.contains(e.target)) return;
+  if (e.target.dataset && e.target.dataset.thFilterBtn) return;
+  closeContactHeaderFilterPopover();
+}
+
+function openContactHeaderFilterPopover(colId, anchorBtn) {
+  const wasOpenForSameCol = contactsOpenHeaderFilterCol === colId;
+  closeContactHeaderFilterPopover();
+  if (wasOpenForSameCol) return;
+  contactsOpenHeaderFilterCol = colId;
+  const rect = anchorBtn.getBoundingClientRect();
+  const pop = document.createElement("div");
+  pop.className = "th-filter-pop";
+  pop.style.top = `${rect.bottom + window.scrollY + 4}px`;
+  pop.style.left = `${Math.min(rect.left + window.scrollX, window.innerWidth - 210)}px`;
+  pop.innerHTML = contactHeaderFilterControlHtml(colId);
+  document.body.appendChild(pop);
+  contactsHeaderFilterPopoverEl = pop;
+  pop.querySelectorAll("[data-hf-input]").forEach((el) => {
+    const eventName = el.tagName === "SELECT" || el.type === "date" ? "change" : "input";
+    el.addEventListener(eventName, (e) => {
+      contactsFilters[el.dataset.hfInput] = e.target.value;
+      renderContacts();
+    });
+  });
+  const firstInput = pop.querySelector("input, select");
+  if (firstInput) firstInput.focus();
+  setTimeout(() => document.addEventListener("mousedown", contactHeaderFilterOutsideClick, true), 0);
+}
+
 function renderContacts() {
   const filteredContacts = state.contacts.filter(contactMatchesFilters);
   const filtersActive = Boolean(contactsFilters.search || contactsFilters.status || contactsFilters.accountId || contactsFilters.ownerId || contactsFilters.title || contactsFilters.draftType || contactsFilters.dateFrom || contactsFilters.dateTo);
   const ownerOptions = contactsOwnerFilterOptions();
-  const titleOptions = Array.from(new Set(state.contacts.map((c) => c.title).filter(Boolean))).sort();
+  const ownerColVisible = contactColVisible("owner");
 
   // Drop any selected ids that no longer exist (contact deleted elsewhere)
   // so "N selected" never counts a row that isn't on screen anymore, and so
@@ -1995,34 +2121,13 @@ function renderContacts() {
 
   document.getElementById("topbar-actions").innerHTML = `
     <div class="topbar-filters">
-      <input type="text" id="contacts-filter-search" placeholder="Search name, title, email…" value="${escapeAttr(contactsFilters.search)}" />
-      <select id="contacts-filter-status">
-        <option value="">All statuses</option>
-        ${CONTACT_STATUSES.map((s) => `<option value="${s}" ${contactsFilters.status === s ? "selected" : ""}>${s}</option>`).join("")}
-      </select>
-      <select id="contacts-filter-account">
-        <option value="">All accounts</option>
-        ${state.accounts.slice().sort((a, b) => a.name.localeCompare(b.name)).map((a) => `<option value="${a.id}" ${contactsFilters.accountId === String(a.id) ? "selected" : ""}>${a.name}</option>`).join("")}
-      </select>
-      <select id="contacts-filter-title">
-        <option value="">All titles</option>
-        ${titleOptions.map((t) => `<option value="${escapeAttr(t)}" ${contactsFilters.title === t ? "selected" : ""}>${t}</option>`).join("")}
-      </select>
-      <select id="contacts-filter-drafttype">
-        <option value="">All draft types</option>
-        <option value="auto" ${contactsFilters.draftType === "auto" ? "selected" : ""}>Auto</option>
-        <option value="manual" ${contactsFilters.draftType === "manual" ? "selected" : ""}>Manual</option>
-        <option value="none" ${contactsFilters.draftType === "none" ? "selected" : ""}>— (none)</option>
-      </select>
-      <input type="date" id="contacts-filter-date-from" value="${contactsFilters.dateFrom}" title="Created on/after" />
-      <input type="date" id="contacts-filter-date-to" value="${contactsFilters.dateTo}" title="Created on/before" />
-      ${ownerOptions ? `
+      ${(!ownerColVisible && ownerOptions) ? `
         <select id="contacts-filter-owner">
           <option value="">All owners</option>
           ${ownerOptions.map((u) => `<option value="${u.id}" ${contactsFilters.ownerId === String(u.id) ? "selected" : ""}>${u.id === state.user.id ? "Just me" : u.name}</option>`).join("")}
         </select>
       ` : ""}
-      ${filtersActive ? `<button type="button" class="btn btn-small" id="contacts-filter-clear-btn">Clear</button>` : ""}
+      ${filtersActive ? `<button type="button" class="btn btn-small" id="contacts-filter-clear-btn">Clear filters</button>` : ""}
       <span class="topbar-filter-count">${filteredContacts.length} of ${state.contacts.length}</span>
     </div>
     <span class="topbar-divider"></span>
@@ -2076,17 +2181,17 @@ function renderContacts() {
             <input type="checkbox" id="contacts-select-all" ${allSelected ? "checked" : ""} />
             <button type="button" class="col-menu-btn" id="contacts-columns-btn" title="Show/hide or filter columns" aria-label="Show/hide or filter columns">⋮</button>
           </th>
-          <th>Name</th>
-          ${cv("date") ? `<th>Date</th>` : ""}
-          ${cv("title") ? `<th>Title</th>` : ""}
-          ${cv("account") ? `<th>Account</th>` : ""}
+          <th>${thFilterHtml("name", "Name")}</th>
+          ${cv("date") ? `<th>${thFilterHtml("date", "Date")}</th>` : ""}
+          ${cv("title") ? `<th>${thFilterHtml("title", "Title")}</th>` : ""}
+          ${cv("account") ? `<th>${thFilterHtml("account", "Account")}</th>` : ""}
           ${cv("email") ? `<th>Email</th>` : ""}
           ${cv("emailIcon") ? `<th style="text-align:center">Send</th>` : ""}
           ${cv("linkedin") ? `<th style="text-align:center">LinkedIn</th>` : ""}
           ${cv("iq") ? `<th style="text-align:center">IQ</th>` : ""}
-          ${cv("owner") ? `<th>Owner</th>` : ""}
-          ${cv("status") ? `<th>Status</th>` : ""}
-          ${cv("draftType") ? `<th>Draft Type</th>` : ""}
+          ${cv("owner") ? `<th>${thFilterHtml("owner", "Owner")}</th>` : ""}
+          ${cv("status") ? `<th>${thFilterHtml("status", "Status")}</th>` : ""}
+          ${cv("draftType") ? `<th>${thFilterHtml("draftType", "Draft Type")}</th>` : ""}
           ${cv("draft") ? `<th>Draft</th>` : ""}
           ${cv("emailDate") ? `<th>Email Date</th>` : ""}
           ${cv("response") ? `<th>Response</th>` : ""}
@@ -2165,44 +2270,10 @@ function renderContacts() {
     tr.addEventListener("click", () => openContactDetailModal(byId(state.contacts, tr.dataset.contact)));
   });
 
-  const searchEl = document.getElementById("contacts-filter-search");
-  searchEl.addEventListener("input", (e) => {
-    contactsFilters.search = e.target.value;
-    const cursorPos = e.target.selectionStart;
-    renderContacts();
-    // Re-rendering rebuilds the input from scratch, which drops focus --
-    // put it right back (with the cursor where it was) so typing a search
-    // term doesn't get interrupted after every character.
-    const newSearchEl = document.getElementById("contacts-filter-search");
-    if (newSearchEl) {
-      newSearchEl.focus();
-      newSearchEl.setSelectionRange(cursorPos, cursorPos);
-    }
-  });
-  document.getElementById("contacts-filter-status").addEventListener("change", (e) => {
-    contactsFilters.status = e.target.value;
-    renderContacts();
-  });
-  document.getElementById("contacts-filter-account").addEventListener("change", (e) => {
-    contactsFilters.accountId = e.target.value;
-    renderContacts();
-  });
-  document.getElementById("contacts-filter-title").addEventListener("change", (e) => {
-    contactsFilters.title = e.target.value;
-    renderContacts();
-  });
-  document.getElementById("contacts-filter-drafttype").addEventListener("change", (e) => {
-    contactsFilters.draftType = e.target.value;
-    renderContacts();
-  });
-  document.getElementById("contacts-filter-date-from").addEventListener("change", (e) => {
-    contactsFilters.dateFrom = e.target.value;
-    renderContacts();
-  });
-  document.getElementById("contacts-filter-date-to").addEventListener("change", (e) => {
-    contactsFilters.dateTo = e.target.value;
-    renderContacts();
-  });
+  // Owner is the one filterable field that can end up with nowhere to live
+  // in the header row (its column can be hidden, or hidden entirely for
+  // non-admin/manager roles) -- when that's the case it falls back to this
+  // topbar select instead of disappearing.
   const ownerFilterEl = document.getElementById("contacts-filter-owner");
   if (ownerFilterEl) {
     ownerFilterEl.addEventListener("change", (e) => {
@@ -2214,9 +2285,16 @@ function renderContacts() {
   if (filterClearBtn) {
     filterClearBtn.addEventListener("click", () => {
       contactsFilters = { search: "", status: "", accountId: "", ownerId: "", title: "", draftType: "", dateFrom: "", dateTo: "" };
+      closeContactHeaderFilterPopover();
       renderContacts();
     });
   }
+  root.querySelectorAll("[data-th-filter-btn]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openContactHeaderFilterPopover(btn.dataset.thFilterBtn, btn);
+    });
+  });
   const scopeClearBtn = document.getElementById("contacts-clear-scope-btn");
   if (scopeClearBtn) {
     scopeClearBtn.addEventListener("click", () => {

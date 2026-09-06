@@ -737,6 +737,38 @@ table.resizable-table td:last-child { position: relative; }
 }
 .col-menu-btn:hover { background: rgba(30, 58, 232, 0.12); color: var(--ink); }
 
+/* Inline per-column filter trigger living right in a table header cell's own
+   label ("Title ▾") -- the filter for a column sits on that column, not in a
+   separate bar floating above the whole table. th-filter-pop is the little
+   floating panel it opens, appended to <body> (positioned via inline
+   top/left set in JS from the trigger's own bounding rect) so it survives
+   the table re-rendering underneath it while it's open. */
+.th-filter { display: inline-flex; align-items: center; gap: 3px; }
+.th-filter-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 4px;
+  border-radius: 4px;
+}
+.th-filter-btn:hover { background: rgba(30, 58, 232, 0.12); color: var(--ink); }
+.th-filter-btn-active { background: #1e3ae8; color: #fff; }
+.th-filter-btn-active:hover { background: #1e3ae8; color: #fff; }
+.th-filter-pop {
+  position: fixed;
+  z-index: 50;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  padding: 10px;
+  min-width: 190px;
+}
+.th-filter-pop input, .th-filter-pop select { width: 100%; }
+
 /* Email column: send icon, same visual language as the LinkedIn glyph next
    to it -- a small rounded swatch, brand-colored and clickable when the
    contact has an email on file, muted and inert when not. */
