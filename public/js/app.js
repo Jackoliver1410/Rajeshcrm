@@ -2855,8 +2855,16 @@ function openContactDetailModal(c) {
   });
 }
 
-function openContactFormModal(existing) {
-  const v = existing || { first_name: "", last_name: "", title: "", email: "", phone: "", linkedin_url: "", sales_navigator_url: "", account_id: "" };
+// `draftOverride` is used only when re-opening this form after a detour to
+// edit the linked Account (see the "Edit" button next to the Account select
+// below) -- it carries the in-progress field values the user had already
+// typed, layered on top of `existing`, so that detour doesn't lose their
+// work. It never changes whether this is a create or an edit: that's still
+// decided by `existing` alone, so the submit handler below still POSTs vs.
+// PUTs correctly either way.
+function openContactFormModal(existing, draftOverride) {
+  const base = existing || { first_name: "", last_name: "", title: "", email: "", phone: "", linkedin_url: "", sales_navigator_url: "", account_id: "" };
+  const v = draftOverride ? { ...base, ...draftOverride } : base;
   openModal(`
     <h2>${existing ? "Edit" : "New"} contact</h2>
     <form id="contact-form">
@@ -2868,21 +2876,50 @@ function openContactFormModal(existing) {
       <label>Last name</label><input id="contact-last-input" name="last_name" value="${escapeAttr(v.last_name)}" required />
       <label>Title</label><input id="contact-title-input" name="title" value="${escapeAttr(v.title || "")}" />
       <label>Email</label><input id="contact-email-input" name="email" type="email" value="${escapeAttr(v.email || "")}" />
-      <label>Phone</label><input name="phone" value="${escapeAttr(v.phone || "")}" />
+      <label>Phone</label><input id="contact-phone-input" name="phone" value="${escapeAttr(v.phone || "")}" />
       <label>LinkedIn URL</label><input id="contact-linkedin-input" name="linkedin_url" type="text" value="${escapeAttr(v.linkedin_url || "")}" placeholder="linkedin.com/in/..." />
-      <label>Sales Navigator URL</label><input name="sales_navigator_url" type="text" value="${escapeAttr(v.sales_navigator_url || "")}" placeholder="linkedin.com/sales/lead/..." />
+      <label>Sales Navigator URL</label><input id="contact-salesnav-input" name="sales_navigator_url" type="text" value="${escapeAttr(v.sales_navigator_url || "")}" placeholder="linkedin.com/sales/lead/..." />
       <label>Account</label>
-      <select name="account_id" id="contact-account-select">
-        <option value="">—</option>
-        ${state.accounts.map((a) => `<option value="${a.id}" ${v.account_id === a.id ? "selected" : ""}>${a.name}</option>`).join("")}
-      </select>
-      <div class="hint">Auto-fill looks up Title, LinkedIn URL, and a matching Account from First/Last name (and Email, if entered) using Apollo and Claude web search. It never guesses a phone number, and won't create a new Account.</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select name="account_id" id="contact-account-select" style="flex:1">
+          <option value="">—</option>
+          ${state.accounts.map((a) => `<option value="${a.id}" ${Number(v.account_id) === a.id ? "selected" : ""}>${a.name}</option>`).join("")}
+        </select>
+        <button type="button" class="btn" id="contact-account-edit-btn" ${v.account_id ? "" : "disabled"}>Edit</button>
+      </div>
+      <div class="hint">Auto-fill looks up Title, LinkedIn URL, and a matching Account from First/Last name (and Email, if entered) using Apollo and Claude web search. It never guesses a phone number, and won't create a new Account. Pick an existing Account above, then use Edit to update its details without leaving this form.</div>
       <div class="modal-actions">
         <button type="button" class="btn" onclick="closeModal()">Cancel</button>
         <button type="submit" class="btn btn-primary">${existing ? "Save changes" : "Create contact"}</button>
       </div>
     </form>
   `);
+  // Edit button next to the Account select: only enabled once an Account is
+  // actually picked, and opens that Account's own edit form -- the current
+  // Contact field values (including whatever was just typed) are captured
+  // first and restored when we come back, so this detour doesn't lose work.
+  const accountSelect = document.getElementById("contact-account-select");
+  const accountEditBtn = document.getElementById("contact-account-edit-btn");
+  accountSelect.addEventListener("change", () => {
+    accountEditBtn.disabled = !accountSelect.value;
+  });
+  accountEditBtn.addEventListener("click", () => {
+    const account = state.accounts.find((a) => a.id === Number(accountSelect.value));
+    if (!account) return;
+    const draft = {
+      first_name: document.getElementById("contact-first-input").value,
+      last_name: document.getElementById("contact-last-input").value,
+      title: document.getElementById("contact-title-input").value,
+      email: document.getElementById("contact-email-input").value,
+      phone: document.getElementById("contact-phone-input").value,
+      linkedin_url: document.getElementById("contact-linkedin-input").value,
+      sales_navigator_url: document.getElementById("contact-salesnav-input").value,
+      account_id: account.id,
+    };
+    openAccountFormModal(account, (savedAccount) => {
+      openContactFormModal(existing, { ...draft, account_id: savedAccount.id });
+    });
+  });
   // Auto-fill: mirrors the Account form's Auto-fill button. Apollo (people
   // search) is tried first, then Claude's live web search for whatever
   // Apollo didn't return. Phone is deliberately never touched by this button
@@ -4284,7 +4321,12 @@ function openContactImportModal() {
   });
 }
 
-function openAccountFormModal(existing) {
+// `onSaved`, if given, is called with the saved account instead of the
+// default close-and-refresh-the-Accounts-page behavior -- used by the
+// Contact form's "Edit" button (next to its Account select) to hand control
+// back to the contact form afterward, rather than dropping the user onto
+// the Accounts page.
+function openAccountFormModal(existing, onSaved) {
   const v = existing || { name: "", industry: "", website: "", revenue: "", address: "", sales_navigator_url: "" };
   openModal(`
     <h2>${existing ? "Edit" : "New"} account</h2>
@@ -4370,18 +4412,19 @@ function openAccountFormModal(existing) {
     const body = Object.fromEntries(new FormData(e.target));
     body.sales_navigator_url = normalizeUrlInput(body.sales_navigator_url);
     try {
+      let saved;
       if (existing) {
-        const updated = await api(`/api/accounts/${existing.id}`, { method: "PUT", body });
+        saved = await api(`/api/accounts/${existing.id}`, { method: "PUT", body });
         const idx = state.accounts.findIndex((a) => a.id === existing.id);
-        if (idx !== -1) state.accounts[idx] = updated;
+        if (idx !== -1) state.accounts[idx] = saved;
         toast("Account updated");
       } else {
-        await api("/api/accounts", { method: "POST", body });
+        saved = await api("/api/accounts", { method: "POST", body });
         toast("Account created");
       }
       closeModal();
       await loadAll();
-      renderAccounts();
+      if (onSaved) onSaved(saved); else renderAccounts();
     } catch (err) {
       toast(err.message, "error");
     }
