@@ -832,7 +832,7 @@ function switchView(view) {
   // #view-root, specifically so it survives that view's own re-renders --
   // which also means it has to be closed by hand on the way to any other
   // view, or it'd be left floating over whatever's rendered next.
-  if (typeof closeContactHeaderFilterPopover === "function") closeContactHeaderFilterPopover();
+  if (typeof closeHeaderFilterPopover === "function") closeHeaderFilterPopover();
   state.view = view;
   document.querySelectorAll(".nav-item").forEach((el) => el.classList.toggle("active", el.dataset.view === view));
   document.getElementById("settings-gear-btn").classList.toggle("active-icon", view === "settings");
@@ -1745,7 +1745,7 @@ function exportContactsCSV() {
   // selection." With nothing checked it falls back to whatever the filter
   // bar currently shows (all contacts, if no filters are set) -- so a plain
   // click always exports what's actually on screen.
-  const filtersActive = Boolean(contactsFilters.search || contactsFilters.status || contactsFilters.accountId || contactsFilters.ownerId || contactsScopeFilter);
+  const filtersActive = Boolean(anyHeaderFilterActive(contactFilterDefs(), contactsFilters) || contactsScopeFilter);
   const source = contactsSelected.size
     ? state.contacts.filter((c) => contactsSelected.has(c.id))
     : state.contacts.filter(contactMatchesFilters);
@@ -1766,7 +1766,7 @@ function exportContactsCSV() {
 // but as a real .xlsx with Calibri 11 on every cell (a .csv can't carry a
 // font at all).
 async function exportContactsXlsx() {
-  const filtersActive = Boolean(contactsFilters.search || contactsFilters.status || contactsFilters.accountId || contactsFilters.ownerId || contactsScopeFilter);
+  const filtersActive = Boolean(anyHeaderFilterActive(contactFilterDefs(), contactsFilters) || contactsScopeFilter);
   const source = contactsSelected.size
     ? state.contacts.filter((c) => contactsSelected.has(c.id))
     : state.contacts.filter(contactMatchesFilters);
@@ -1846,59 +1846,20 @@ function contactColVisible(id) {
   return !hiddenContactColumns.has(id);
 }
 
-// Header-row entry point for showing/hiding + quick-filtering columns (per
-// "give an option to hide or filter the content in that column's top row
-// itself" -- the trigger lives in the table's own header row, next to the
-// select-all checkbox, rather than a separate settings area). Toggling a
-// checkbox here re-renders the table live without closing this panel.
+// Header-row entry point for showing/hiding columns (filtering itself now
+// lives as a ▾ trigger on each column's own header cell -- see thFilterHtml
+// / openHeaderFilterPopover below -- so this modal is show/hide only).
+// Toggling a checkbox here re-renders the table live without closing this
+// panel.
 function openContactColumnsModal() {
   const defs = contactColumnDefs();
-  const quickFilterHtml = (id) => {
-    if (id === "status") {
-      return `<select data-col-filter="status" style="width:auto;margin-left:auto">
-        <option value="">All statuses</option>
-        ${CONTACT_STATUSES.map((s) => `<option value="${s}" ${contactsFilters.status === s ? "selected" : ""}>${s}</option>`).join("")}
-      </select>`;
-    }
-    if (id === "title") {
-      const titleOptions = Array.from(new Set(state.contacts.map((c) => c.title).filter(Boolean))).sort();
-      return `<select data-col-filter="title" style="width:auto;margin-left:auto">
-        <option value="">All titles</option>
-        ${titleOptions.map((t) => `<option value="${escapeAttr(t)}" ${contactsFilters.title === t ? "selected" : ""}>${t}</option>`).join("")}
-      </select>`;
-    }
-    if (id === "draftType") {
-      return `<select data-col-filter="draftType" style="width:auto;margin-left:auto">
-        <option value="">All draft types</option>
-        <option value="auto" ${contactsFilters.draftType === "auto" ? "selected" : ""}>Auto</option>
-        <option value="manual" ${contactsFilters.draftType === "manual" ? "selected" : ""}>Manual</option>
-        <option value="none" ${contactsFilters.draftType === "none" ? "selected" : ""}>— (none)</option>
-      </select>`;
-    }
-    if (id === "account") {
-      return `<select data-col-filter="account" style="width:auto;margin-left:auto">
-        <option value="">All accounts</option>
-        ${state.accounts.slice().sort((a, b) => a.name.localeCompare(b.name)).map((a) => `<option value="${a.id}" ${contactsFilters.accountId === String(a.id) ? "selected" : ""}>${a.name}</option>`).join("")}
-      </select>`;
-    }
-    if (id === "owner") {
-      const opts = contactsOwnerFilterOptions();
-      if (!opts) return "";
-      return `<select data-col-filter="owner" style="width:auto;margin-left:auto">
-        <option value="">All owners</option>
-        ${opts.map((u) => `<option value="${u.id}" ${contactsFilters.ownerId === String(u.id) ? "selected" : ""}>${u.id === state.user.id ? "Just me" : u.name}</option>`).join("")}
-      </select>`;
-    }
-    return "";
-  };
   openModal(`
     <h2>Columns</h2>
-    <div class="hint" style="margin-bottom:10px">Choose which columns show in the table (saved on this browser), and jump straight to a column's filter.</div>
+    <div class="hint" style="margin-bottom:10px">Choose which columns show in the table (saved on this browser). Each visible column has its own ▾ filter in its header.</div>
     ${defs.map((d) => `
       <label style="display:flex;align-items:center;gap:8px;padding:6px 0">
         <input type="checkbox" data-col-toggle="${d.id}" ${hiddenContactColumns.has(d.id) ? "" : "checked"} />
-        <span style="min-width:90px">${d.label}</span>
-        ${quickFilterHtml(d.id)}
+        <span>${d.label}</span>
       </label>
     `).join("")}
     <div class="modal-actions">
@@ -1911,17 +1872,6 @@ function openContactColumnsModal() {
       if (e.target.checked) hiddenContactColumns.delete(id);
       else hiddenContactColumns.add(id);
       saveHiddenContactColumns();
-      renderContacts();
-    });
-  });
-  document.querySelectorAll("[data-col-filter]").forEach((sel) => {
-    sel.addEventListener("change", (e) => {
-      const which = sel.dataset.colFilter;
-      if (which === "status") contactsFilters.status = e.target.value;
-      if (which === "account") contactsFilters.accountId = e.target.value;
-      if (which === "owner") contactsFilters.ownerId = e.target.value;
-      if (which === "title") contactsFilters.title = e.target.value;
-      if (which === "draftType") contactsFilters.draftType = e.target.value;
       renderContacts();
     });
   });
@@ -1938,11 +1888,11 @@ const CONTACT_STATUSES = [
 ];
 
 // Contacts table filters -- module-level like contactsSelected, so choices
-// survive the re-render every checkbox/status edit triggers. To add a
-// filter for a future column: add the field here, add its control to the
-// filter bar in renderContacts() below, and add its check to
-// contactMatchesFilters().
-let contactsFilters = { search: "", status: "", accountId: "", ownerId: "", title: "", draftType: "", dateFrom: "", dateTo: "" };
+// survive the re-render every checkbox/status edit triggers. Flat bag keyed
+// by column id (colId+"From"/"To" for a dateRange column) -- see
+// contactFilterDefs() above for what each key means and how a future column
+// adds its own.
+let contactsFilters = {};
 
 // Set only when arriving from the Dashboard's "Total Contacts" card (array
 // of owner_ids matching whatever scope produced that count) -- same idea as
@@ -1954,17 +1904,28 @@ let contactsScopeFilter = null;
 function contactMatchesFilters(c) {
   const f = contactsFilters;
   if (contactsScopeFilter && !contactsScopeFilter.includes(c.owner_id)) return false;
-  if (f.status && (c.status || "Fresh") !== f.status) return false;
-  if (f.accountId && String(c.account_id || "") !== f.accountId) return false;
-  if (f.ownerId && String(c.owner_id || "") !== f.ownerId) return false;
-  if (f.title && (c.title || "") !== f.title) return false;
-  if (f.draftType && (c.draft_mode || "none") !== f.draftType) return false;
-  if (f.dateFrom && (!c.created_at || c.created_at < f.dateFrom)) return false;
-  if (f.dateTo && (!c.created_at || c.created_at > f.dateTo)) return false;
-  if (f.search) {
-    const q = f.search.toLowerCase();
-    const haystack = `${c.first_name} ${c.last_name} ${c.title || ""} ${c.email || ""}`.toLowerCase();
-    if (!haystack.includes(q)) return false;
+  const defs = contactFilterDefs();
+  for (const colId in defs) {
+    const def = defs[colId];
+    if (def.kind === "select") {
+      if (f[colId] && String(def.getValue(c)) !== f[colId]) return false;
+    } else if (def.kind === "boolean") {
+      if (f[colId] === "yes" && !def.getValue(c)) return false;
+      if (f[colId] === "no" && def.getValue(c)) return false;
+    } else if (def.kind === "text") {
+      if (f[colId]) {
+        const q = f[colId].toLowerCase();
+        if (!String(def.getValue(c) || "").toLowerCase().includes(q)) return false;
+      }
+    } else if (def.kind === "dateRange") {
+      const from = f[`${colId}From`];
+      const to = f[`${colId}To`];
+      if (from || to) {
+        const val = def.getValue(c);
+        if (from && (!val || val < from)) return false;
+        if (to && (!val || val > to)) return false;
+      }
+    }
   }
   return true;
 }
@@ -1984,73 +1945,69 @@ function contactsOwnerFilterOptions() {
   return state.users.slice().sort((a, b) => a.name.localeCompare(b.name));
 }
 
-// The little inline filter attached directly to a Contacts table column
-// header -- a small caret button next to the column's own label that toggles
-// a floating popover holding just that column's control (a text box for
-// Name, a <select> for the enum-ish columns, two date inputs for Date).
-// Deliberately NOT a row of filter controls living in a bar above the table
-// -- per explicit feedback, the filters belong "in that row itself" (the
-// table's own header row), not floating disconnected from the columns they
-// narrow down.
+// ---------- Shared inline header-column filter engine ----------
+// Every list view that wants "the filter for a column lives on that column's
+// own header, not in a separate bar above the table" (Contacts, Accounts,
+// and any future list) plugs into this instead of rolling its own popover
+// logic. A view supplies:
+//   - defs: a plain object of colId -> { label, kind, getValue, getOptions }
+//     kind is one of "text" (substring match), "select" (exact match against
+//     getOptions()' values), "boolean" (getValue() truthy/falsy, offered as
+//     Has/Missing <label>), or "dateRange" (getValue() compared against
+//     colId+"From"/colId+"To").
+//   - filters: that view's own flat filter-state object (colId, or
+//     colId+"From"/"To" for dateRange, as keys).
+//   - renderFn: the view's render function, called after every change so the
+//     table re-filters live.
+// Adding a filter for a brand-new column is then just one entry in that
+// view's defs object plus one thFilterHtml(...) call in its header markup --
+// no popover/matching code to write per column.
 //
-// The popover is appended to <body>, not into #view-root -- renderContacts()
-// replaces #view-root wholesale on every keystroke/selection, and a popover
-// living outside that subtree survives each of those re-renders instead of
-// being wiped (and losing focus) along with the table it's anchored to.
-let contactsOpenHeaderFilterCol = null;
-let contactsHeaderFilterPopoverEl = null;
+// The popover itself is appended to <body>, not into the view's own root --
+// a render call replaces that root wholesale on every keystroke/selection,
+// and a popover living outside that subtree survives each of those
+// re-renders instead of being wiped (and losing focus) along with the table
+// it's anchored to.
+let openHeaderFilter = null; // { colId, popoverEl } while a popover is open, else null
 
-function contactHeaderFilterIsActive(colId) {
-  if (colId === "date") return Boolean(contactsFilters.dateFrom || contactsFilters.dateTo);
-  const fieldMap = { name: "search", status: "status", account: "accountId", title: "title", draftType: "draftType", owner: "ownerId" };
-  const field = fieldMap[colId];
-  return Boolean(field && contactsFilters[field]);
+function headerFilterIsActive(defs, filters, colId) {
+  const def = defs[colId];
+  if (!def) return false;
+  if (def.kind === "dateRange") return Boolean(filters[`${colId}From`] || filters[`${colId}To`]);
+  return Boolean(filters[colId]);
 }
 
-function contactHeaderFilterControlHtml(colId) {
-  if (colId === "name") {
-    return `<input type="text" data-hf-input="search" placeholder="Search name, title, email…" value="${escapeAttr(contactsFilters.search)}" />`;
+function anyHeaderFilterActive(defs, filters) {
+  return Object.keys(defs).some((colId) => headerFilterIsActive(defs, filters, colId));
+}
+
+function headerFilterControlHtml(defs, filters, colId) {
+  const def = defs[colId];
+  if (!def) return "";
+  if (def.kind === "text") {
+    return `<input type="text" data-hf-input="${colId}" placeholder="Search ${def.label.toLowerCase()}…" value="${escapeAttr(filters[colId] || "")}" />`;
   }
-  if (colId === "status") {
-    return `<select data-hf-input="status">
-      <option value="">All statuses</option>
-      ${CONTACT_STATUSES.map((s) => `<option value="${s}" ${contactsFilters.status === s ? "selected" : ""}>${s}</option>`).join("")}
+  if (def.kind === "select") {
+    const options = def.getOptions();
+    return `<select data-hf-input="${colId}">
+      <option value="">All</option>
+      ${options.map((o) => `<option value="${escapeAttr(String(o.value))}" ${String(filters[colId] || "") === String(o.value) ? "selected" : ""}>${o.label}</option>`).join("")}
     </select>`;
   }
-  if (colId === "account") {
-    return `<select data-hf-input="accountId">
-      <option value="">All accounts</option>
-      ${state.accounts.slice().sort((a, b) => a.name.localeCompare(b.name)).map((a) => `<option value="${a.id}" ${contactsFilters.accountId === String(a.id) ? "selected" : ""}>${a.name}</option>`).join("")}
+  if (def.kind === "boolean") {
+    const cur = filters[colId] || "";
+    return `<select data-hf-input="${colId}">
+      <option value="">All</option>
+      <option value="yes" ${cur === "yes" ? "selected" : ""}>Has ${def.label}</option>
+      <option value="no" ${cur === "no" ? "selected" : ""}>Missing ${def.label}</option>
     </select>`;
   }
-  if (colId === "title") {
-    const titles = Array.from(new Set(state.contacts.map((c) => c.title).filter(Boolean))).sort();
-    return `<select data-hf-input="title">
-      <option value="">All titles</option>
-      ${titles.map((t) => `<option value="${escapeAttr(t)}" ${contactsFilters.title === t ? "selected" : ""}>${t}</option>`).join("")}
-    </select>`;
-  }
-  if (colId === "draftType") {
-    return `<select data-hf-input="draftType">
-      <option value="">All draft types</option>
-      <option value="auto" ${contactsFilters.draftType === "auto" ? "selected" : ""}>Auto</option>
-      <option value="manual" ${contactsFilters.draftType === "manual" ? "selected" : ""}>Manual</option>
-      <option value="none" ${contactsFilters.draftType === "none" ? "selected" : ""}>— (none)</option>
-    </select>`;
-  }
-  if (colId === "owner") {
-    const opts = contactsOwnerFilterOptions();
-    return `<select data-hf-input="ownerId">
-      <option value="">All owners</option>
-      ${opts.map((u) => `<option value="${u.id}" ${contactsFilters.ownerId === String(u.id) ? "selected" : ""}>${u.id === state.user.id ? "Just me" : u.name}</option>`).join("")}
-    </select>`;
-  }
-  if (colId === "date") {
+  if (def.kind === "dateRange") {
     return `
-      <div style="font-size:11px;color:var(--text-dim);margin-bottom:2px">Created on/after</div>
-      <input type="date" data-hf-input="dateFrom" value="${contactsFilters.dateFrom}" />
-      <div style="font-size:11px;color:var(--text-dim);margin:8px 0 2px">Created on/before</div>
-      <input type="date" data-hf-input="dateTo" value="${contactsFilters.dateTo}" />
+      <div style="font-size:11px;color:var(--text-dim);margin-bottom:2px">${def.label} on/after</div>
+      <input type="date" data-hf-input="${colId}From" value="${filters[`${colId}From`] || ""}" />
+      <div style="font-size:11px;color:var(--text-dim);margin:8px 0 2px">${def.label} on/before</div>
+      <input type="date" data-hf-input="${colId}To" value="${filters[`${colId}To`] || ""}" />
     `;
   }
   return "";
@@ -2059,55 +2016,76 @@ function contactHeaderFilterControlHtml(colId) {
 // Renders a header <th>'s inner content as "Label ▾", with the caret's
 // active/inactive styling reflecting whether that column currently has a
 // filter applied.
-function thFilterHtml(colId, label) {
-  const active = contactHeaderFilterIsActive(colId);
+function thFilterHtml(defs, filters, colId, label) {
+  const active = headerFilterIsActive(defs, filters, colId);
   return `<span class="th-filter">${label}<button type="button" class="th-filter-btn${active ? " th-filter-btn-active" : ""}" data-th-filter-btn="${colId}" title="Filter ${label}" aria-label="Filter ${label}">▾</button></span>`;
 }
 
-function closeContactHeaderFilterPopover() {
-  if (contactsHeaderFilterPopoverEl) {
-    contactsHeaderFilterPopoverEl.remove();
-    contactsHeaderFilterPopoverEl = null;
-  }
-  contactsOpenHeaderFilterCol = null;
-  document.removeEventListener("mousedown", contactHeaderFilterOutsideClick, true);
+function closeHeaderFilterPopover() {
+  if (openHeaderFilter && openHeaderFilter.popoverEl) openHeaderFilter.popoverEl.remove();
+  openHeaderFilter = null;
+  document.removeEventListener("mousedown", headerFilterOutsideClick, true);
 }
 
-function contactHeaderFilterOutsideClick(e) {
-  if (!contactsHeaderFilterPopoverEl) return;
-  if (contactsHeaderFilterPopoverEl.contains(e.target)) return;
+function headerFilterOutsideClick(e) {
+  if (!openHeaderFilter || !openHeaderFilter.popoverEl) return;
+  if (openHeaderFilter.popoverEl.contains(e.target)) return;
   if (e.target.dataset && e.target.dataset.thFilterBtn) return;
-  closeContactHeaderFilterPopover();
+  closeHeaderFilterPopover();
 }
 
-function openContactHeaderFilterPopover(colId, anchorBtn) {
-  const wasOpenForSameCol = contactsOpenHeaderFilterCol === colId;
-  closeContactHeaderFilterPopover();
+function openHeaderFilterPopover(defs, filters, colId, anchorBtn, renderFn) {
+  const wasOpenForSameCol = openHeaderFilter && openHeaderFilter.colId === colId;
+  closeHeaderFilterPopover();
   if (wasOpenForSameCol) return;
-  contactsOpenHeaderFilterCol = colId;
   const rect = anchorBtn.getBoundingClientRect();
   const pop = document.createElement("div");
   pop.className = "th-filter-pop";
   pop.style.top = `${rect.bottom + window.scrollY + 4}px`;
   pop.style.left = `${Math.min(rect.left + window.scrollX, window.innerWidth - 210)}px`;
-  pop.innerHTML = contactHeaderFilterControlHtml(colId);
+  pop.innerHTML = headerFilterControlHtml(defs, filters, colId);
   document.body.appendChild(pop);
-  contactsHeaderFilterPopoverEl = pop;
+  openHeaderFilter = { colId, popoverEl: pop };
   pop.querySelectorAll("[data-hf-input]").forEach((el) => {
     const eventName = el.tagName === "SELECT" || el.type === "date" ? "change" : "input";
     el.addEventListener(eventName, (e) => {
-      contactsFilters[el.dataset.hfInput] = e.target.value;
-      renderContacts();
+      filters[el.dataset.hfInput] = e.target.value;
+      renderFn();
     });
   });
   const firstInput = pop.querySelector("input, select");
   if (firstInput) firstInput.focus();
-  setTimeout(() => document.addEventListener("mousedown", contactHeaderFilterOutsideClick, true), 0);
+  setTimeout(() => document.addEventListener("mousedown", headerFilterOutsideClick, true), 0);
+}
+
+// Single source of truth for every Contacts column's header filter: label,
+// filter kind, and how to read the value off a contact. Add a new column
+// here (plus one thFilterHtml(CONTACT_FILTER_DEFS, ...) call in the header
+// markup in renderContacts()) and it gets a working inline filter with no
+// other code to touch.
+function contactFilterDefs() {
+  return {
+    name: { label: "Name", kind: "text", getValue: (c) => `${c.first_name || ""} ${c.last_name || ""}` },
+    date: { label: "Date", kind: "dateRange", getValue: (c) => c.created_at },
+    title: { label: "Title", kind: "select", getValue: (c) => c.title || "", getOptions: () => Array.from(new Set(state.contacts.map((c) => c.title).filter(Boolean))).sort().map((t) => ({ value: t, label: t })) },
+    account: { label: "Account", kind: "select", getValue: (c) => String(c.account_id || ""), getOptions: () => state.accounts.slice().sort((a, b) => a.name.localeCompare(b.name)).map((a) => ({ value: String(a.id), label: a.name })) },
+    email: { label: "Email", kind: "text", getValue: (c) => c.email || "" },
+    emailIcon: { label: "Send", kind: "boolean", getValue: (c) => Boolean(c.email) },
+    linkedin: { label: "LinkedIn", kind: "boolean", getValue: (c) => Boolean(c.linkedin_url) },
+    iq: { label: "IQ", kind: "boolean", getValue: (c) => Boolean(c.iq_notes) },
+    owner: { label: "Owner", kind: "select", getValue: (c) => String(c.owner_id || ""), getOptions: () => contactsOwnerFilterOptions().map((u) => ({ value: String(u.id), label: u.id === state.user.id ? "Just me" : u.name })) },
+    status: { label: "Status", kind: "select", getValue: (c) => c.status || "Fresh", getOptions: () => CONTACT_STATUSES.map((s) => ({ value: s, label: s })) },
+    draftType: { label: "Draft Type", kind: "select", getValue: (c) => c.draft_mode || "none", getOptions: () => ([{ value: "auto", label: "Auto" }, { value: "manual", label: "Manual" }, { value: "none", label: "— (none)" }]) },
+    draft: { label: "Draft", kind: "text", getValue: (c) => c.draft_text || "" },
+    emailDate: { label: "Email Date", kind: "dateRange", getValue: (c) => c.last_emailed_at },
+    response: { label: "Response", kind: "text", getValue: (c) => c.response_text || "" },
+  };
 }
 
 function renderContacts() {
+  const contactDefs = contactFilterDefs();
   const filteredContacts = state.contacts.filter(contactMatchesFilters);
-  const filtersActive = Boolean(contactsFilters.search || contactsFilters.status || contactsFilters.accountId || contactsFilters.ownerId || contactsFilters.title || contactsFilters.draftType || contactsFilters.dateFrom || contactsFilters.dateTo);
+  const filtersActive = anyHeaderFilterActive(contactDefs, contactsFilters);
   const ownerOptions = contactsOwnerFilterOptions();
   const ownerColVisible = contactColVisible("owner");
 
@@ -2124,7 +2102,7 @@ function renderContacts() {
       ${(!ownerColVisible && ownerOptions) ? `
         <select id="contacts-filter-owner">
           <option value="">All owners</option>
-          ${ownerOptions.map((u) => `<option value="${u.id}" ${contactsFilters.ownerId === String(u.id) ? "selected" : ""}>${u.id === state.user.id ? "Just me" : u.name}</option>`).join("")}
+          ${ownerOptions.map((u) => `<option value="${u.id}" ${contactsFilters.owner === String(u.id) ? "selected" : ""}>${u.id === state.user.id ? "Just me" : u.name}</option>`).join("")}
         </select>
       ` : ""}
       ${filtersActive ? `<button type="button" class="btn btn-small" id="contacts-filter-clear-btn">Clear filters</button>` : ""}
@@ -2181,20 +2159,20 @@ function renderContacts() {
             <input type="checkbox" id="contacts-select-all" ${allSelected ? "checked" : ""} />
             <button type="button" class="col-menu-btn" id="contacts-columns-btn" title="Show/hide or filter columns" aria-label="Show/hide or filter columns">⋮</button>
           </th>
-          <th>${thFilterHtml("name", "Name")}</th>
-          ${cv("date") ? `<th>${thFilterHtml("date", "Date")}</th>` : ""}
-          ${cv("title") ? `<th>${thFilterHtml("title", "Title")}</th>` : ""}
-          ${cv("account") ? `<th>${thFilterHtml("account", "Account")}</th>` : ""}
-          ${cv("email") ? `<th>Email</th>` : ""}
-          ${cv("emailIcon") ? `<th style="text-align:center">Send</th>` : ""}
-          ${cv("linkedin") ? `<th style="text-align:center">LinkedIn</th>` : ""}
-          ${cv("iq") ? `<th style="text-align:center">IQ</th>` : ""}
-          ${cv("owner") ? `<th>${thFilterHtml("owner", "Owner")}</th>` : ""}
-          ${cv("status") ? `<th>${thFilterHtml("status", "Status")}</th>` : ""}
-          ${cv("draftType") ? `<th>${thFilterHtml("draftType", "Draft Type")}</th>` : ""}
-          ${cv("draft") ? `<th>Draft</th>` : ""}
-          ${cv("emailDate") ? `<th>Email Date</th>` : ""}
-          ${cv("response") ? `<th>Response</th>` : ""}
+          <th>${thFilterHtml(contactDefs, contactsFilters, "name", "Name")}</th>
+          ${cv("date") ? `<th>${thFilterHtml(contactDefs, contactsFilters, "date", "Date")}</th>` : ""}
+          ${cv("title") ? `<th>${thFilterHtml(contactDefs, contactsFilters, "title", "Title")}</th>` : ""}
+          ${cv("account") ? `<th>${thFilterHtml(contactDefs, contactsFilters, "account", "Account")}</th>` : ""}
+          ${cv("email") ? `<th>${thFilterHtml(contactDefs, contactsFilters, "email", "Email")}</th>` : ""}
+          ${cv("emailIcon") ? `<th style="text-align:center">${thFilterHtml(contactDefs, contactsFilters, "emailIcon", "Send")}</th>` : ""}
+          ${cv("linkedin") ? `<th style="text-align:center">${thFilterHtml(contactDefs, contactsFilters, "linkedin", "LinkedIn")}</th>` : ""}
+          ${cv("iq") ? `<th style="text-align:center">${thFilterHtml(contactDefs, contactsFilters, "iq", "IQ")}</th>` : ""}
+          ${cv("owner") ? `<th>${thFilterHtml(contactDefs, contactsFilters, "owner", "Owner")}</th>` : ""}
+          ${cv("status") ? `<th>${thFilterHtml(contactDefs, contactsFilters, "status", "Status")}</th>` : ""}
+          ${cv("draftType") ? `<th>${thFilterHtml(contactDefs, contactsFilters, "draftType", "Draft Type")}</th>` : ""}
+          ${cv("draft") ? `<th>${thFilterHtml(contactDefs, contactsFilters, "draft", "Draft")}</th>` : ""}
+          ${cv("emailDate") ? `<th>${thFilterHtml(contactDefs, contactsFilters, "emailDate", "Email Date")}</th>` : ""}
+          ${cv("response") ? `<th>${thFilterHtml(contactDefs, contactsFilters, "response", "Response")}</th>` : ""}
         </tr></thead>
         <tbody>
           ${filteredContacts.map((c) => `
@@ -2277,22 +2255,22 @@ function renderContacts() {
   const ownerFilterEl = document.getElementById("contacts-filter-owner");
   if (ownerFilterEl) {
     ownerFilterEl.addEventListener("change", (e) => {
-      contactsFilters.ownerId = e.target.value;
+      contactsFilters.owner = e.target.value;
       renderContacts();
     });
   }
   const filterClearBtn = document.getElementById("contacts-filter-clear-btn");
   if (filterClearBtn) {
     filterClearBtn.addEventListener("click", () => {
-      contactsFilters = { search: "", status: "", accountId: "", ownerId: "", title: "", draftType: "", dateFrom: "", dateTo: "" };
-      closeContactHeaderFilterPopover();
+      contactsFilters = {};
+      closeHeaderFilterPopover();
       renderContacts();
     });
   }
   root.querySelectorAll("[data-th-filter-btn]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
-      openContactHeaderFilterPopover(btn.dataset.thFilterBtn, btn);
+      openHeaderFilterPopover(contactDefs, contactsFilters, btn.dataset.thFilterBtn, btn, renderContacts);
     });
   });
   const scopeClearBtn = document.getElementById("contacts-clear-scope-btn");
@@ -3204,12 +3182,13 @@ let accountsScopeFilter = null; // array of owner_ids, or null for no filter —
 // checkbox click triggers.
 let accountsSelected = new Set();
 
-// Accounts table filters -- same module-level pattern as contactsFilters, so
-// choices survive the re-render every checkbox click triggers. To add a
-// filter for a future column: add the field here, add its control to the
-// filter bar in renderAccounts() below, and add its check to
-// accountMatchesFilters().
-let accountsFilters = { search: "", industry: "", ownerId: "", scoreBand: "" };
+// Accounts table filters -- same module-level pattern as contactsFilters:
+// a flat bag keyed by column id (colId+"From"/"To" for a dateRange column),
+// see accountFilterDefs() below for what each key means. "scoreBand" is the
+// one exception -- there's no Score column in this table to hang a header
+// filter off of, so it's handled by hand (falls back to the topbar, same
+// idea as the Owner fallback on Contacts).
+let accountsFilters = {};
 
 // Which sub-tab of the Accounts page is showing -- "list" (the accounts
 // table), "gem" (Accounts Gem), or "salesforce" (Salesforce pull/push), all
@@ -3245,19 +3224,53 @@ const INTENT_SCORE_BAND_OPTIONS = [
   ["none", "Not scored"],
 ];
 
+// Single source of truth for every Accounts column's header filter -- same
+// contract as contactFilterDefs() above. Add a new column here (plus one
+// thFilterHtml(ACCOUNT_FILTER_DEFS, ...) call in the header markup in
+// renderAccountsListView()) and it gets a working inline filter with no
+// other code to touch.
+function accountFilterDefs() {
+  return {
+    name: { label: "Account", kind: "text", getValue: (a) => a.name || "" },
+    industry: { label: "Industry", kind: "select", getValue: (a) => a.industry || "", getOptions: () => Array.from(new Set(state.accounts.map((a) => a.industry).filter(Boolean))).sort().map((i) => ({ value: i, label: i })) },
+    website: { label: "Website", kind: "text", getValue: (a) => a.website || "" },
+    phone: { label: "Phone", kind: "text", getValue: (a) => a.phone || "" },
+    owner: { label: "Owner", kind: "select", getValue: (a) => String(a.owner_id || ""), getOptions: () => state.users.slice().sort((u1, u2) => u1.name.localeCompare(u2.name)).map((u) => ({ value: String(u.id), label: u.name })) },
+    created: { label: "Created", kind: "dateRange", getValue: (a) => a.created_at },
+  };
+}
+
 function accountMatchesFilters(a) {
   const f = accountsFilters;
   if (accountsScopeFilter && !accountsScopeFilter.includes(a.owner_id)) return false;
-  if (f.industry && (a.industry || "") !== f.industry) return false;
-  if (f.ownerId && String(a.owner_id || "") !== f.ownerId) return false;
+  // scoreBand has no header column to live in, so it's checked by hand here
+  // rather than going through accountFilterDefs().
   if (f.scoreBand) {
     const band = intentScoreBand(a.intent_score);
     if (f.scoreBand === "none" ? band !== null : band !== f.scoreBand) return false;
   }
-  if (f.search) {
-    const q = f.search.toLowerCase();
-    const haystack = `${a.name} ${a.website || ""}`.toLowerCase();
-    if (!haystack.includes(q)) return false;
+  const defs = accountFilterDefs();
+  for (const colId in defs) {
+    const def = defs[colId];
+    if (def.kind === "select") {
+      if (f[colId] && String(def.getValue(a)) !== f[colId]) return false;
+    } else if (def.kind === "boolean") {
+      if (f[colId] === "yes" && !def.getValue(a)) return false;
+      if (f[colId] === "no" && def.getValue(a)) return false;
+    } else if (def.kind === "text") {
+      if (f[colId]) {
+        const q = f[colId].toLowerCase();
+        if (!String(def.getValue(a) || "").toLowerCase().includes(q)) return false;
+      }
+    } else if (def.kind === "dateRange") {
+      const from = f[`${colId}From`];
+      const to = f[`${colId}To`];
+      if (from || to) {
+        const val = def.getValue(a);
+        if (from && (!val || val < from)) return false;
+        if (to && (!val || val > to)) return false;
+      }
+    }
   }
   return true;
 }
@@ -3357,10 +3370,10 @@ function wireAccountsTabBar(root) {
 }
 
 function renderAccountsListView() {
+  const accountDefs = accountFilterDefs();
   const rows = state.accounts.filter(accountMatchesFilters);
-  const filtersActive = Boolean(accountsFilters.search || accountsFilters.industry || accountsFilters.ownerId || accountsFilters.scoreBand);
+  const filtersActive = Boolean(anyHeaderFilterActive(accountDefs, accountsFilters) || accountsFilters.scoreBand);
   const canDelete = ["admin", "manager"].includes(state.user.role);
-  const industries = Array.from(new Set(state.accounts.map((a) => a.industry).filter(Boolean))).sort();
 
   // Drop selected ids that fell out of view (deleted elsewhere, or scoped
   // out by a filter) so "N selected" stays accurate.
@@ -3372,20 +3385,11 @@ function renderAccountsListView() {
 
   document.getElementById("topbar-actions").innerHTML = `
     <div class="topbar-filters">
-      <input type="text" id="accounts-filter-search" placeholder="Search name, website…" value="${escapeAttr(accountsFilters.search)}" />
-      <select id="accounts-filter-industry">
-        <option value="">All industries</option>
-        ${industries.map((i) => `<option value="${i}" ${accountsFilters.industry === i ? "selected" : ""}>${i}</option>`).join("")}
-      </select>
-      <select id="accounts-filter-owner">
-        <option value="">All owners</option>
-        ${state.users.slice().sort((a, b) => a.name.localeCompare(b.name)).map((u) => `<option value="${u.id}" ${accountsFilters.ownerId === String(u.id) ? "selected" : ""}>${u.name}</option>`).join("")}
-      </select>
       <select id="accounts-filter-score">
         <option value="">All scores</option>
         ${INTENT_SCORE_BAND_OPTIONS.map(([v, label]) => `<option value="${v}" ${accountsFilters.scoreBand === v ? "selected" : ""}>${label}</option>`).join("")}
       </select>
-      ${filtersActive ? `<button type="button" class="btn btn-small" id="accounts-filter-clear-btn">Clear</button>` : ""}
+      ${filtersActive ? `<button type="button" class="btn btn-small" id="accounts-filter-clear-btn">Clear filters</button>` : ""}
       <span class="topbar-filter-count">${rows.length} of ${state.accounts.length}</span>
     </div>
     <span class="topbar-divider"></span>
@@ -3421,7 +3425,12 @@ function renderAccountsListView() {
       <table>
         <thead><tr>
           <th style="width:34px"><input type="checkbox" id="accounts-select-all" ${allSelected ? "checked" : ""} /></th>
-          <th>Account</th><th>Industry</th><th>Website</th><th>Phone</th><th>Owner</th><th>Created</th>
+          <th>${thFilterHtml(accountDefs, accountsFilters, "name", "Account")}</th>
+          <th>${thFilterHtml(accountDefs, accountsFilters, "industry", "Industry")}</th>
+          <th>${thFilterHtml(accountDefs, accountsFilters, "website", "Website")}</th>
+          <th>${thFilterHtml(accountDefs, accountsFilters, "phone", "Phone")}</th>
+          <th>${thFilterHtml(accountDefs, accountsFilters, "owner", "Owner")}</th>
+          <th>${thFilterHtml(accountDefs, accountsFilters, "created", "Created")}</th>
         </tr></thead>
         <tbody>
           ${rows.map((a) => `
@@ -3449,28 +3458,6 @@ function renderAccountsListView() {
     tr.addEventListener("click", () => openAccountDetailModal(byId(state.accounts, tr.dataset.account)));
   });
 
-  const searchEl = document.getElementById("accounts-filter-search");
-  searchEl.addEventListener("input", (e) => {
-    accountsFilters.search = e.target.value;
-    const cursorPos = e.target.selectionStart;
-    renderAccounts();
-    // Re-rendering rebuilds the input from scratch, which drops focus --
-    // put it right back (with the cursor where it was) so typing a search
-    // term doesn't get interrupted after every character.
-    const newSearchEl = document.getElementById("accounts-filter-search");
-    if (newSearchEl) {
-      newSearchEl.focus();
-      newSearchEl.setSelectionRange(cursorPos, cursorPos);
-    }
-  });
-  document.getElementById("accounts-filter-industry").addEventListener("change", (e) => {
-    accountsFilters.industry = e.target.value;
-    renderAccounts();
-  });
-  document.getElementById("accounts-filter-owner").addEventListener("change", (e) => {
-    accountsFilters.ownerId = e.target.value;
-    renderAccounts();
-  });
   document.getElementById("accounts-filter-score").addEventListener("change", (e) => {
     accountsFilters.scoreBand = e.target.value;
     renderAccounts();
@@ -3478,10 +3465,17 @@ function renderAccountsListView() {
   const filterClearBtn = document.getElementById("accounts-filter-clear-btn");
   if (filterClearBtn) {
     filterClearBtn.addEventListener("click", () => {
-      accountsFilters = { search: "", industry: "", ownerId: "", scoreBand: "" };
+      accountsFilters = {};
+      closeHeaderFilterPopover();
       renderAccounts();
     });
   }
+  root.querySelectorAll("[data-th-filter-btn]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openHeaderFilterPopover(accountDefs, accountsFilters, btn.dataset.thFilterBtn, btn, renderAccounts);
+    });
+  });
   root.querySelectorAll("[data-intent-score-icon]").forEach((el) => {
     el.addEventListener("click", () => openIntentScoreModal(byId(state.accounts, el.dataset.intentScoreIcon)));
   });
@@ -3582,7 +3576,7 @@ function exportAccountsCsv() {
   // Same selection-first, filter-second precedence as Export CSV on
   // Contacts: checked rows win if any are checked, otherwise it falls back
   // to whatever the filter bar currently shows.
-  const filtersActive = Boolean(accountsFilters.search || accountsFilters.industry || accountsFilters.ownerId || accountsScopeFilter);
+  const filtersActive = Boolean(anyHeaderFilterActive(accountFilterDefs(), accountsFilters) || accountsFilters.scoreBand || accountsScopeFilter);
   const rows = accountsSelected.size
     ? state.accounts.filter((a) => accountsSelected.has(a.id))
     : state.accounts.filter(accountMatchesFilters);
@@ -3610,7 +3604,7 @@ function exportAccountsCsv() {
 // Same rows/columns as exportAccountsCsv above, but a real .xlsx with
 // Calibri 11 on every cell.
 async function exportAccountsXlsx() {
-  const filtersActive = Boolean(accountsFilters.search || accountsFilters.industry || accountsFilters.ownerId || accountsScopeFilter);
+  const filtersActive = Boolean(anyHeaderFilterActive(accountFilterDefs(), accountsFilters) || accountsFilters.scoreBand || accountsScopeFilter);
   const rows = accountsSelected.size
     ? state.accounts.filter((a) => accountsSelected.has(a.id))
     : state.accounts.filter(accountMatchesFilters);

@@ -743,18 +743,24 @@ table.resizable-table td:last-child { position: relative; }
    floating panel it opens, appended to <body> (positioned via inline
    top/left set in JS from the trigger's own bounding rect) so it survives
    the table re-rendering underneath it while it's open. */
-.th-filter { display: inline-flex; align-items: center; gap: 3px; }
+.th-filter { display: inline-flex; align-items: center; gap: 5px; }
+/* Always shown as a visible little chip (not just on hover/active) -- a
+   bare unicode ▾ at text-dim color on a white header all but disappeared,
+   so every trigger gets a light tinted background and a bigger arrow all
+   the time, with the active state (a filter is currently applied to this
+   column) just switching that same chip to solid blue. */
 .th-filter-btn {
   border: none;
-  background: transparent;
-  color: var(--text-dim);
+  background: rgba(30, 58, 232, 0.12);
+  color: var(--ink);
   cursor: pointer;
-  font-size: 10px;
+  font-size: 13px;
+  font-weight: 700;
   line-height: 1;
-  padding: 3px 4px;
-  border-radius: 4px;
+  padding: 4px 7px;
+  border-radius: 5px;
 }
-.th-filter-btn:hover { background: rgba(30, 58, 232, 0.12); color: var(--ink); }
+.th-filter-btn:hover { background: rgba(30, 58, 232, 0.24); }
 .th-filter-btn-active { background: #1e3ae8; color: #fff; }
 .th-filter-btn-active:hover { background: #1e3ae8; color: #fff; }
 .th-filter-pop {
