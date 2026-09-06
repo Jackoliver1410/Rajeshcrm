@@ -1193,14 +1193,20 @@ function leadStatusPill(status) {
   return `<span class="pill ${cls}">${label}</span>`;
 }
 
-function renderLeadsTable(leads, filtersActive) {
+function renderLeadsTable(leads, filtersActive, opts = {}) {
   if (!leads.length) return `<div class="empty-state">${filtersActive ? "No leads match these filters." : "No leads yet."}</div>`;
+  const { canDelete, selected } = opts;
+  const allSelected = canDelete && leads.length > 0 && leads.every((l) => selected.has(l.id));
   return `
     <table>
-      <thead><tr><th>Contact person</th><th>Company</th><th>BDM</th><th>Source</th><th>Demo date</th><th>Status</th></tr></thead>
+      <thead><tr>
+        ${canDelete ? `<th style="width:34px"><input type="checkbox" id="leads-select-all" ${allSelected ? "checked" : ""} /></th>` : ""}
+        <th>Contact person</th><th>Company</th><th>BDM</th><th>Source</th><th>Demo date</th><th>Status</th>
+      </tr></thead>
       <tbody>
         ${leads.map((l) => `
           <tr class="row-click" data-lead="${l.id}">
+            ${canDelete ? `<td onclick="event.stopPropagation()"><input type="checkbox" data-lead-select="${l.id}" ${selected.has(l.id) ? "checked" : ""} /></td>` : ""}
             <td>${l.contact_person || "—"}</td>
             <td>${l.company || "—"}</td>
             <td>${userName(l.bdm_assigned_id)}</td>
@@ -1226,6 +1232,10 @@ function renderLeadsTable(leads, filtersActive) {
 // row-open/close triggers.
 let leadsFilters = { search: "", bdmId: "", source: "", status: "" };
 
+// Row-selection state for the Leads table's select-all + bulk delete, same
+// module-level Set pattern as contactsSelected/accountsSelected.
+let leadsSelected = new Set();
+
 function leadMatchesFilters(l) {
   const f = leadsFilters;
   if (f.bdmId && String(l.bdm_assigned_id || "") !== f.bdmId) return false;
@@ -1247,6 +1257,15 @@ function renderLeads() {
   const filtered = state.leads.filter(leadMatchesFilters);
   const filtersActive = Boolean(leadsFilters.search || leadsFilters.bdmId || leadsFilters.source || leadsFilters.status);
   const rows = filtered.slice().sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1));
+  // Same admin/manager gate as the single-lead Delete button in the detail
+  // modal -- select-all + bulk delete is just a faster way to do the same
+  // password-gated deletion, not a separate permission.
+  const canDelete = ["admin", "manager"].includes(state.user.role);
+
+  // Drop selected ids that fell out of view (deleted elsewhere, or scoped
+  // out by a filter) so "N selected" stays accurate.
+  const validIds = new Set(rows.map((l) => l.id));
+  Array.from(leadsSelected).forEach((id) => { if (!validIds.has(id)) leadsSelected.delete(id); });
 
   root.innerHTML = `
     <div class="panel" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 20px">
@@ -1266,7 +1285,14 @@ function renderLeads() {
       ${filtersActive ? `<button type="button" class="btn btn-small" id="leads-filter-clear-btn">Clear filters</button>` : ""}
       <span style="font-size:12px;color:var(--text-dim);margin-left:auto">${rows.length} of ${state.leads.length} leads</span>
     </div>
-    <div class="panel">${renderLeadsTable(rows, filtersActive)}</div>
+    ${leadsSelected.size ? `
+      <div class="panel" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 20px">
+        <span style="font-size:13px;font-weight:600">${leadsSelected.size} selected</span>
+        <button type="button" class="btn btn-small" id="leads-bulk-clear-btn">Clear selection</button>
+        <button type="button" class="btn btn-small btn-danger" id="leads-bulk-delete-btn" title="Delete selected" aria-label="Delete selected" style="margin-left:auto">🗑 Delete selected</button>
+      </div>
+    ` : ""}
+    <div class="panel">${renderLeadsTable(rows, filtersActive, { canDelete, selected: leadsSelected })}</div>
   `;
   root.querySelectorAll("[data-lead]").forEach((row) => {
     row.addEventListener("click", () => {
@@ -1274,6 +1300,69 @@ function renderLeads() {
       if (lead) openLeadDetailModal(lead);
     });
   });
+
+  const leadsSelectAllEl = document.getElementById("leads-select-all");
+  if (leadsSelectAllEl) {
+    leadsSelectAllEl.addEventListener("change", (e) => {
+      // Only acts on the rows currently visible under the active filters --
+      // same behavior as the equivalent checkbox on Contacts/Accounts.
+      if (e.target.checked) rows.forEach((l) => leadsSelected.add(l.id));
+      else rows.forEach((l) => leadsSelected.delete(l.id));
+      renderLeads();
+    });
+  }
+  root.querySelectorAll("[data-lead-select]").forEach((cb) => {
+    cb.addEventListener("change", (e) => {
+      const id = Number(cb.dataset.leadSelect);
+      if (e.target.checked) leadsSelected.add(id);
+      else leadsSelected.delete(id);
+      renderLeads();
+    });
+  });
+  const leadsBulkClearBtn = document.getElementById("leads-bulk-clear-btn");
+  if (leadsBulkClearBtn) {
+    leadsBulkClearBtn.addEventListener("click", () => {
+      leadsSelected.clear();
+      renderLeads();
+    });
+  }
+  const leadsBulkDeleteBtn = document.getElementById("leads-bulk-delete-btn");
+  if (leadsBulkDeleteBtn) {
+    leadsBulkDeleteBtn.addEventListener("click", () => {
+      const ids = Array.from(leadsSelected);
+      openPasswordConfirmModal({
+        title: `Delete ${ids.length} lead${ids.length === 1 ? "" : "s"}?`,
+        hint: "This can't be undone.",
+        confirmLabel: "Delete leads",
+        onConfirm: async (password) => {
+          const results = await runWithConcurrency(ids, 5, (id) => api(`/api/leads/${id}`, { method: "DELETE", body: { password } }));
+          const succeededIds = ids.filter((_, i) => results[i].status === "fulfilled");
+          const failed = ids
+            .map((id, i) => ({ id, result: results[i] }))
+            .filter((r) => r.result.status === "rejected");
+          if (succeededIds.length) {
+            state.leads = state.leads.filter((l) => !succeededIds.includes(l.id));
+            succeededIds.forEach((id) => leadsSelected.delete(id));
+          }
+          if (succeededIds.length === 0 && failed.length) {
+            // Every delete failed -- most commonly a wrong password. Throw
+            // so openPasswordConfirmModal's own error handling shows it and
+            // leaves the modal open to try again, instead of closing and
+            // reporting the failure via toast (which reads as "done, and it
+            // failed" rather than "try again").
+            throw new Error(failed[0].result.reason.message);
+          }
+          closeModal();
+          if (failed.length) {
+            toast(`Deleted ${succeededIds.length}, ${failed.length} failed: ${failed[0].result.reason.message}`, "error");
+          } else {
+            toast(`Deleted ${succeededIds.length} lead${succeededIds.length === 1 ? "" : "s"}`);
+          }
+          renderLeads();
+        },
+      });
+    });
+  }
 
   const searchEl = document.getElementById("leads-filter-search");
   searchEl.addEventListener("input", (e) => {
@@ -1601,17 +1690,19 @@ function openLeadDetailModal(lead) {
   }
   const deleteBtn = document.getElementById("lead-delete-btn");
   if (deleteBtn) {
-    deleteBtn.addEventListener("click", async () => {
-      if (!confirm("Delete this lead? This can't be undone.")) return;
-      try {
-        await api(`/api/leads/${lead.id}`, { method: "DELETE" });
-        toast("Lead deleted");
-        closeModal();
-        await loadAll();
-        renderLeads();
-      } catch (err) {
-        toast(err.message, "error");
-      }
+    deleteBtn.addEventListener("click", () => {
+      openPasswordConfirmModal({
+        title: "Delete this lead?",
+        hint: "This can't be undone.",
+        confirmLabel: "Delete lead",
+        onConfirm: async (password) => {
+          await api(`/api/leads/${lead.id}`, { method: "DELETE", body: { password } });
+          toast("Lead deleted");
+          closeModal();
+          await loadAll();
+          renderLeads();
+        },
+      });
     });
   }
 }
@@ -6738,6 +6829,49 @@ function openDeleteUserModal(u) {
   passwordEl.addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); document.getElementById("du-confirm-btn").click(); }
   });
+}
+
+// Generic "re-enter your password to confirm this destructive action" modal
+// -- same UX as openDeleteUserModal just above, factored out so any other
+// password-gated delete (Leads' single/bulk delete today, and any future
+// one) can reuse it instead of re-implementing the same modal. `onConfirm`
+// receives the entered password and does the actual API call(s); it's
+// responsible for calling closeModal() itself on success (letting the modal
+// stay open, with the error shown, is exactly what should happen on
+// failure -- e.g. a wrong password -- so this doesn't close it for you).
+function openPasswordConfirmModal({ title, hint, confirmLabel = "Confirm", onConfirm }) {
+  openModal(`
+    <h2>${title}</h2>
+    ${hint ? `<div class="hint" style="margin-top:0">${hint}</div>` : ""}
+    <label>Confirm your password</label>
+    <input type="password" id="pc-password" autocomplete="current-password" placeholder="Your current password" />
+    <div class="error-text" id="pc-error"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+      <button type="button" class="btn btn-danger" id="pc-confirm-btn">${confirmLabel}</button>
+    </div>
+  `);
+  const passwordEl = document.getElementById("pc-password");
+  passwordEl.focus();
+  const errEl = document.getElementById("pc-error");
+  const btn = document.getElementById("pc-confirm-btn");
+  const submit = async () => {
+    const password = passwordEl.value;
+    errEl.textContent = "";
+    if (!password) {
+      errEl.textContent = "Enter your password to confirm.";
+      return;
+    }
+    btn.disabled = true;
+    try {
+      await onConfirm(password);
+    } catch (err) {
+      errEl.textContent = err.message;
+      btn.disabled = false;
+    }
+  };
+  btn.addEventListener("click", submit);
+  passwordEl.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
 }
 
 // ---------- Settings > Access Control (admin) ----------
