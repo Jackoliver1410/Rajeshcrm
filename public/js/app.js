@@ -1981,6 +1981,24 @@ function anyHeaderFilterActive(defs, filters) {
   return Object.keys(defs).some((colId) => headerFilterIsActive(defs, filters, colId));
 }
 
+// Master on/off switch for a view's header filters, persisted per-browser
+// (same try/catch-wrapped localStorage pattern as every other per-browser
+// preference in the app). Turning filters off doesn't just hide the ▾
+// triggers -- the caller also clears that view's filters object, so "off"
+// really means no filtering, not just a hidden UI with something still
+// silently applied underneath.
+function getHeaderFiltersOn(storageKey) {
+  try { return localStorage.getItem(storageKey) !== "off"; } catch { return true; }
+}
+function setHeaderFiltersOn(storageKey, on) {
+  try { localStorage.setItem(storageKey, on ? "on" : "off"); } catch { /* ignore */ }
+}
+
+// The filters on/off button living at the end of a table's header row.
+function filtersToggleButtonHtml(toggleId, on) {
+  return `<button type="button" class="col-menu-btn filters-toggle-btn${on ? " filters-toggle-btn-on" : ""}" data-filters-toggle-btn="${toggleId}" title="${on ? "Turn column filters off" : "Turn column filters on"}" aria-label="${on ? "Turn column filters off" : "Turn column filters on"}">${FILTERS_TOGGLE_ICON_SVG}</button>`;
+}
+
 function headerFilterControlHtml(defs, filters, colId) {
   const def = defs[colId];
   if (!def) return "";
@@ -2084,10 +2102,14 @@ function contactFilterDefs() {
 
 function renderContacts() {
   const contactDefs = contactFilterDefs();
+  const contactsFiltersOn = getHeaderFiltersOn("contactsFiltersEnabled");
   const filteredContacts = state.contacts.filter(contactMatchesFilters);
-  const filtersActive = anyHeaderFilterActive(contactDefs, contactsFilters);
+  const filtersActive = contactsFiltersOn && anyHeaderFilterActive(contactDefs, contactsFilters);
   const ownerOptions = contactsOwnerFilterOptions();
   const ownerColVisible = contactColVisible("owner");
+  // When filters are toggled off, every header shows its plain label instead
+  // of thFilterHtml's ▾ trigger.
+  const cf = (colId, label) => contactsFiltersOn ? thFilterHtml(contactDefs, contactsFilters, colId, label) : label;
 
   // Drop any selected ids that no longer exist (contact deleted elsewhere)
   // so "N selected" never counts a row that isn't on screen anymore, and so
@@ -2099,7 +2121,7 @@ function renderContacts() {
 
   document.getElementById("topbar-actions").innerHTML = `
     <div class="topbar-filters">
-      ${(!ownerColVisible && ownerOptions) ? `
+      ${(contactsFiltersOn && !ownerColVisible && ownerOptions) ? `
         <select id="contacts-filter-owner">
           <option value="">All owners</option>
           ${ownerOptions.map((u) => `<option value="${u.id}" ${contactsFilters.owner === String(u.id) ? "selected" : ""}>${u.id === state.user.id ? "Just me" : u.name}</option>`).join("")}
@@ -2159,20 +2181,21 @@ function renderContacts() {
             <input type="checkbox" id="contacts-select-all" ${allSelected ? "checked" : ""} />
             <button type="button" class="col-menu-btn" id="contacts-columns-btn" title="Show/hide or filter columns" aria-label="Show/hide or filter columns">⋮</button>
           </th>
-          <th>${thFilterHtml(contactDefs, contactsFilters, "name", "Name")}</th>
-          ${cv("date") ? `<th>${thFilterHtml(contactDefs, contactsFilters, "date", "Date")}</th>` : ""}
-          ${cv("title") ? `<th>${thFilterHtml(contactDefs, contactsFilters, "title", "Title")}</th>` : ""}
-          ${cv("account") ? `<th>${thFilterHtml(contactDefs, contactsFilters, "account", "Account")}</th>` : ""}
-          ${cv("email") ? `<th>${thFilterHtml(contactDefs, contactsFilters, "email", "Email")}</th>` : ""}
-          ${cv("emailIcon") ? `<th style="text-align:center">${thFilterHtml(contactDefs, contactsFilters, "emailIcon", "Send")}</th>` : ""}
-          ${cv("linkedin") ? `<th style="text-align:center">${thFilterHtml(contactDefs, contactsFilters, "linkedin", "LinkedIn")}</th>` : ""}
-          ${cv("iq") ? `<th style="text-align:center">${thFilterHtml(contactDefs, contactsFilters, "iq", "IQ")}</th>` : ""}
-          ${cv("owner") ? `<th>${thFilterHtml(contactDefs, contactsFilters, "owner", "Owner")}</th>` : ""}
-          ${cv("status") ? `<th>${thFilterHtml(contactDefs, contactsFilters, "status", "Status")}</th>` : ""}
-          ${cv("draftType") ? `<th>${thFilterHtml(contactDefs, contactsFilters, "draftType", "Draft Type")}</th>` : ""}
-          ${cv("draft") ? `<th>${thFilterHtml(contactDefs, contactsFilters, "draft", "Draft")}</th>` : ""}
-          ${cv("emailDate") ? `<th>${thFilterHtml(contactDefs, contactsFilters, "emailDate", "Email Date")}</th>` : ""}
-          ${cv("response") ? `<th>${thFilterHtml(contactDefs, contactsFilters, "response", "Response")}</th>` : ""}
+          <th>${cf("name", "Name")}</th>
+          ${cv("date") ? `<th>${cf("date", "Date")}</th>` : ""}
+          ${cv("title") ? `<th>${cf("title", "Title")}</th>` : ""}
+          ${cv("account") ? `<th>${cf("account", "Account")}</th>` : ""}
+          ${cv("email") ? `<th>${cf("email", "Email")}</th>` : ""}
+          ${cv("emailIcon") ? `<th style="text-align:center">${cf("emailIcon", "Send")}</th>` : ""}
+          ${cv("linkedin") ? `<th style="text-align:center">${cf("linkedin", "LinkedIn")}</th>` : ""}
+          ${cv("iq") ? `<th style="text-align:center">${cf("iq", "IQ")}</th>` : ""}
+          ${cv("owner") ? `<th>${cf("owner", "Owner")}</th>` : ""}
+          ${cv("status") ? `<th>${cf("status", "Status")}</th>` : ""}
+          ${cv("draftType") ? `<th>${cf("draftType", "Draft Type")}</th>` : ""}
+          ${cv("draft") ? `<th>${cf("draft", "Draft")}</th>` : ""}
+          ${cv("emailDate") ? `<th>${cf("emailDate", "Email Date")}</th>` : ""}
+          ${cv("response") ? `<th>${cf("response", "Response")}</th>` : ""}
+          <th style="width:34px">${filtersToggleButtonHtml("contacts", contactsFiltersOn)}</th>
         </tr></thead>
         <tbody>
           ${filteredContacts.map((c) => `
@@ -2236,6 +2259,7 @@ function renderContacts() {
                   </button>
                 </td>
               ` : ""}
+              <td></td>
             </tr>
           `).join("") || `<tr><td colspan="20" class="empty-state">${filtersActive ? "No contacts match these filters." : "No contacts yet."}</td></tr>`}
         </tbody>
@@ -2273,6 +2297,18 @@ function renderContacts() {
       openHeaderFilterPopover(contactDefs, contactsFilters, btn.dataset.thFilterBtn, btn, renderContacts);
     });
   });
+  const contactsFiltersToggleBtn = root.querySelector('[data-filters-toggle-btn="contacts"]');
+  if (contactsFiltersToggleBtn) {
+    contactsFiltersToggleBtn.addEventListener("click", () => {
+      const turningOn = !contactsFiltersOn;
+      setHeaderFiltersOn("contactsFiltersEnabled", turningOn);
+      if (!turningOn) {
+        contactsFilters = {};
+        closeHeaderFilterPopover();
+      }
+      renderContacts();
+    });
+  }
   const scopeClearBtn = document.getElementById("contacts-clear-scope-btn");
   if (scopeClearBtn) {
     scopeClearBtn.addEventListener("click", () => {
@@ -2502,6 +2538,12 @@ function renderContacts() {
 const LINKEDIN_ICON_SVG = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M20.45 20.45h-3.55v-5.57c0-1.33-.02-3.04-1.85-3.04-1.86 0-2.15 1.45-2.15 2.94v5.67H9.35V9h3.41v1.56h.05c.47-.9 1.63-1.85 3.36-1.85 3.6 0 4.27 2.37 4.27 5.45v6.29zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.56V9h3.56v11.45z"/></svg>`;
 
 const EMAIL_ICON_SVG = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 7l9 6 9-6"></path></svg>`;
+
+// Magnifying-glass-with-sliders "filters on/off" icon, sized to match the
+// other small row icons above (Email/LinkedIn are 16x16) rather than the
+// larger multi-color version it's based on -- single-color currentColor
+// line art so it can sit in a plain header button like col-menu-btn.
+const FILTERS_TOGGLE_ICON_SVG = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="10" r="7"></circle><line x1="15.2" y1="15.2" x2="20.5" y2="20.5"></line><line x1="6.5" y1="7" x2="12" y2="7"></line><circle cx="8.2" cy="7" r="1.1" fill="currentColor" stroke="none"></circle><line x1="7" y1="10" x2="13.5" y2="10"></line><circle cx="11" cy="10" r="1.1" fill="currentColor" stroke="none"></circle><line x1="6.5" y1="13" x2="12.5" y2="13"></line><circle cx="9.3" cy="13" r="1.1" fill="currentColor" stroke="none"></circle></svg>`;
 
 // The outreach stages that the auto-draft workflow (point 6) actually
 // applies to -- the other CONTACT_STATUSES (Bounced/Cold/Warm/Prospect/
@@ -3371,9 +3413,13 @@ function wireAccountsTabBar(root) {
 
 function renderAccountsListView() {
   const accountDefs = accountFilterDefs();
+  const accountsFiltersOn = getHeaderFiltersOn("accountsFiltersEnabled");
   const rows = state.accounts.filter(accountMatchesFilters);
-  const filtersActive = Boolean(anyHeaderFilterActive(accountDefs, accountsFilters) || accountsFilters.scoreBand);
+  const filtersActive = accountsFiltersOn && Boolean(anyHeaderFilterActive(accountDefs, accountsFilters) || accountsFilters.scoreBand);
   const canDelete = ["admin", "manager"].includes(state.user.role);
+  // When filters are toggled off, every header shows its plain label instead
+  // of thFilterHtml's ▾ trigger.
+  const af = (colId, label) => accountsFiltersOn ? thFilterHtml(accountDefs, accountsFilters, colId, label) : label;
 
   // Drop selected ids that fell out of view (deleted elsewhere, or scoped
   // out by a filter) so "N selected" stays accurate.
@@ -3385,10 +3431,12 @@ function renderAccountsListView() {
 
   document.getElementById("topbar-actions").innerHTML = `
     <div class="topbar-filters">
-      <select id="accounts-filter-score">
-        <option value="">All scores</option>
-        ${INTENT_SCORE_BAND_OPTIONS.map(([v, label]) => `<option value="${v}" ${accountsFilters.scoreBand === v ? "selected" : ""}>${label}</option>`).join("")}
-      </select>
+      ${accountsFiltersOn ? `
+        <select id="accounts-filter-score">
+          <option value="">All scores</option>
+          ${INTENT_SCORE_BAND_OPTIONS.map(([v, label]) => `<option value="${v}" ${accountsFilters.scoreBand === v ? "selected" : ""}>${label}</option>`).join("")}
+        </select>
+      ` : ""}
       ${filtersActive ? `<button type="button" class="btn btn-small" id="accounts-filter-clear-btn">Clear filters</button>` : ""}
       <span class="topbar-filter-count">${rows.length} of ${state.accounts.length}</span>
     </div>
@@ -3425,12 +3473,13 @@ function renderAccountsListView() {
       <table>
         <thead><tr>
           <th style="width:34px"><input type="checkbox" id="accounts-select-all" ${allSelected ? "checked" : ""} /></th>
-          <th>${thFilterHtml(accountDefs, accountsFilters, "name", "Account")}</th>
-          <th>${thFilterHtml(accountDefs, accountsFilters, "industry", "Industry")}</th>
-          <th>${thFilterHtml(accountDefs, accountsFilters, "website", "Website")}</th>
-          <th>${thFilterHtml(accountDefs, accountsFilters, "phone", "Phone")}</th>
-          <th>${thFilterHtml(accountDefs, accountsFilters, "owner", "Owner")}</th>
-          <th>${thFilterHtml(accountDefs, accountsFilters, "created", "Created")}</th>
+          <th>${af("name", "Account")}</th>
+          <th>${af("industry", "Industry")}</th>
+          <th>${af("website", "Website")}</th>
+          <th>${af("phone", "Phone")}</th>
+          <th>${af("owner", "Owner")}</th>
+          <th>${af("created", "Created")}</th>
+          <th style="width:34px">${filtersToggleButtonHtml("accounts", accountsFiltersOn)}</th>
         </tr></thead>
         <tbody>
           ${rows.map((a) => `
@@ -3442,8 +3491,9 @@ function renderAccountsListView() {
               <td>${a.phone || "—"}</td>
               <td>${userName(a.owner_id)}</td>
               <td>${a.created_at}</td>
+              <td></td>
             </tr>
-          `).join("") || `<tr><td colspan="7" class="empty-state">${filtersActive || accountsScopeFilter ? "No accounts match these filters." : "No accounts yet."}</td></tr>`}
+          `).join("") || `<tr><td colspan="8" class="empty-state">${filtersActive || accountsScopeFilter ? "No accounts match these filters." : "No accounts yet."}</td></tr>`}
         </tbody>
       </table>
     </div>
@@ -3458,10 +3508,13 @@ function renderAccountsListView() {
     tr.addEventListener("click", () => openAccountDetailModal(byId(state.accounts, tr.dataset.account)));
   });
 
-  document.getElementById("accounts-filter-score").addEventListener("change", (e) => {
-    accountsFilters.scoreBand = e.target.value;
-    renderAccounts();
-  });
+  const scoreFilterEl = document.getElementById("accounts-filter-score");
+  if (scoreFilterEl) {
+    scoreFilterEl.addEventListener("change", (e) => {
+      accountsFilters.scoreBand = e.target.value;
+      renderAccounts();
+    });
+  }
   const filterClearBtn = document.getElementById("accounts-filter-clear-btn");
   if (filterClearBtn) {
     filterClearBtn.addEventListener("click", () => {
@@ -3476,6 +3529,18 @@ function renderAccountsListView() {
       openHeaderFilterPopover(accountDefs, accountsFilters, btn.dataset.thFilterBtn, btn, renderAccounts);
     });
   });
+  const accountsFiltersToggleBtn = root.querySelector('[data-filters-toggle-btn="accounts"]');
+  if (accountsFiltersToggleBtn) {
+    accountsFiltersToggleBtn.addEventListener("click", () => {
+      const turningOn = !accountsFiltersOn;
+      setHeaderFiltersOn("accountsFiltersEnabled", turningOn);
+      if (!turningOn) {
+        accountsFilters = {};
+        closeHeaderFilterPopover();
+      }
+      renderAccounts();
+    });
+  }
   root.querySelectorAll("[data-intent-score-icon]").forEach((el) => {
     el.addEventListener("click", () => openIntentScoreModal(byId(state.accounts, el.dataset.intentScoreIcon)));
   });

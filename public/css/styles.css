@@ -775,6 +775,15 @@ table.resizable-table td:last-child { position: relative; }
 }
 .th-filter-pop input, .th-filter-pop select { width: 100%; }
 
+/* Master filters on/off button, sitting at the very end of the header row
+   (its own last <th>, matched by an empty trailing <td> in every body row so
+   the table stays a valid grid). "On" (the default) tints blue like an
+   active column filter, since the whole point of this button is filtering
+   being available; "off" sits muted like the plain col-menu-btn ⋮ trigger,
+   and every column's ▾ disappears back to a plain label while it's off. */
+.filters-toggle-btn-on { background: rgba(30, 58, 232, 0.18); color: var(--ink); }
+.filters-toggle-btn-on:hover { background: rgba(30, 58, 232, 0.3); }
+
 /* Email column: send icon, same visual language as the LinkedIn glyph next
    to it -- a small rounded swatch, brand-colored and clickable when the
    contact has an email on file, muted and inert when not. */
