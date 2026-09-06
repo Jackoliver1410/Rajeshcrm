@@ -1804,6 +1804,20 @@ let hiddenContactColumns = loadHiddenContactColumns();
 function saveHiddenContactColumns() {
   try { localStorage.setItem("contactsHiddenColumns", JSON.stringify(Array.from(hiddenContactColumns))); } catch { /* ignore */ }
 }
+
+// How the Contacts table sizes itself, persisted per-browser (same pattern
+// as the column visibility above). "full" (the default) lets the table grow
+// to its natural height and the page scroll, same as every other list in
+// the app. "fit" bounds it to a bordered, height-capped box with its own
+// scrollbar and a sticky header -- useful for a very long contact list where
+// keeping the horizontal (column-resize) scrollbar on screen matters more
+// than avoiding an inner scroll region.
+function getContactsTableMode() {
+  try { return localStorage.getItem("contactsTableMode") === "fit" ? "fit" : "full"; } catch { return "full"; }
+}
+function setContactsTableMode(mode) {
+  try { localStorage.setItem("contactsTableMode", mode); } catch { /* ignore */ }
+}
 // Owner is a permission boundary, not a preference -- it's left out of the
 // hideable list (and off the table entirely) for anyone who isn't
 // admin/manager, regardless of what's saved in localStorage.
@@ -1958,6 +1972,7 @@ function renderContacts() {
   const validIds = new Set(state.contacts.map((c) => c.id));
   Array.from(contactsSelected).forEach((id) => { if (!validIds.has(id)) contactsSelected.delete(id); });
   const allSelected = filteredContacts.length > 0 && filteredContacts.every((c) => contactsSelected.has(c.id));
+  const tableMode = getContactsTableMode();
 
   document.getElementById("topbar-actions").innerHTML = `
     <div class="topbar-filters">
@@ -1986,6 +2001,7 @@ function renderContacts() {
     <button class="btn btn-compact" id="import-contacts-btn">Import</button>
     <button class="btn btn-compact" id="quick-add-btn">✨ Quick Add</button>
     <button class="btn btn-primary btn-compact" id="new-contact-btn">+ New Contact</button>
+    <button type="button" class="btn btn-compact" id="contacts-table-mode-btn" title="${tableMode === "fit" ? "Switch to Full list — table grows with the page instead of scrolling in its own box" : "Switch to Fit window — bounds the table to a scrollable box so its scrollbar never leaves the screen"}">${tableMode === "fit" ? "⬍ Full list" : "⛶ Fit window"}</button>
   `;
   document.getElementById("new-contact-btn").addEventListener("click", () => openContactFormModal());
   document.getElementById("apollo-search-contacts-btn").addEventListener("click", () => openApolloSearchModal("people"));
@@ -1993,6 +2009,10 @@ function renderContacts() {
   document.getElementById("export-contacts-xlsx-btn").addEventListener("click", exportContactsXlsx);
   document.getElementById("import-contacts-btn").addEventListener("click", () => openImportSourceModal("contacts"));
   document.getElementById("quick-add-btn").addEventListener("click", openQuickAddModal);
+  document.getElementById("contacts-table-mode-btn").addEventListener("click", () => {
+    setContactsTableMode(tableMode === "fit" ? "full" : "fit");
+    renderContacts();
+  });
 
   const cv = contactColVisible;
 
@@ -2018,7 +2038,7 @@ function renderContacts() {
       </div>
     ` : ""}
     <div class="panel">
-      <div class="table-scroll contacts-table">
+      <div class="table-scroll contacts-table${tableMode === "fit" ? " contacts-table--bounded" : ""}">
       <table>
         <thead><tr>
           <th class="sticky-col1" style="width:52px">

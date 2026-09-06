@@ -679,23 +679,30 @@ table.resizable-table td:last-child { position: relative; }
 
 /* Contacts table -- same light brand-blue header band as Activity Report,
    plus a subtle row hover, so the table reads as themed rather than the
-   plain default table styling above. */
-.contacts-table thead th { background: rgba(30, 58, 232, 0.05); color: var(--ink); }
+   plain default table styling above. Header stays sticky (relative to
+   whichever ancestor actually scrolls -- the bounded box below in "Fit
+   window" view, or the page itself in the default "Full list" view) in
+   both display modes, so this isn't gated behind the modifier class. */
+.contacts-table thead th { background: rgba(30, 58, 232, 0.05); color: var(--ink); position: sticky; top: 0; z-index: 2; }
 .contacts-table tbody tr:hover td { background: var(--panel-2); }
+.contacts-table thead .sticky-col1 { z-index: 4; }
 
-/* Bounds the Contacts table's own scroll region to the viewport instead of
-   letting it grow as tall as the row count -- otherwise its horizontal
-   scrollbar (the "toggle slider" for panning across the wide row/column-
-   resized table) ends up far below the fold on a long list, only reachable
-   by scrolling the whole page down first. Capping the height here keeps
-   that scrollbar always on screen, right under the visible rows. */
-.contacts-table.table-scroll {
+/* Default is natural height: the table just grows with its row count and
+   the page scrolls, same as every other list in the app. "Fit window"
+   (the toggle next to Import/Quick Add) opts back into the old behavior --
+   bounding the table's own scroll region to the viewport instead of letting
+   it grow as tall as the row count, so its horizontal scrollbar (the
+   "toggle slider" for panning across the wide row/column-resized table)
+   can't end up far below the fold on a long list, only reachable by
+   scrolling the whole page down first. Useful for a long contact list;
+   unnecessary -- and, per user feedback, actively confusing -- for a short
+   one, where it left dead space on the page below a box that still needed
+   its own inner scroll for the last row or two. */
+.contacts-table.contacts-table--bounded {
   max-height: calc(100vh - 340px);
   min-height: 220px;
   overflow-y: auto;
 }
-.contacts-table.table-scroll thead th { position: sticky; top: 0; z-index: 2; }
-.contacts-table.table-scroll thead .sticky-col1 { z-index: 4; }
 
 /* Compact filter bar (search/status/account/owner row above the table) --
    tighter padding and shorter inputs than the app's default form controls,
