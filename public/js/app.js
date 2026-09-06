@@ -1855,6 +1855,21 @@ function openContactColumnsModal() {
         ${CONTACT_STATUSES.map((s) => `<option value="${s}" ${contactsFilters.status === s ? "selected" : ""}>${s}</option>`).join("")}
       </select>`;
     }
+    if (id === "title") {
+      const titleOptions = Array.from(new Set(state.contacts.map((c) => c.title).filter(Boolean))).sort();
+      return `<select data-col-filter="title" style="width:auto;margin-left:auto">
+        <option value="">All titles</option>
+        ${titleOptions.map((t) => `<option value="${escapeAttr(t)}" ${contactsFilters.title === t ? "selected" : ""}>${t}</option>`).join("")}
+      </select>`;
+    }
+    if (id === "draftType") {
+      return `<select data-col-filter="draftType" style="width:auto;margin-left:auto">
+        <option value="">All draft types</option>
+        <option value="auto" ${contactsFilters.draftType === "auto" ? "selected" : ""}>Auto</option>
+        <option value="manual" ${contactsFilters.draftType === "manual" ? "selected" : ""}>Manual</option>
+        <option value="none" ${contactsFilters.draftType === "none" ? "selected" : ""}>— (none)</option>
+      </select>`;
+    }
     if (id === "account") {
       return `<select data-col-filter="account" style="width:auto;margin-left:auto">
         <option value="">All accounts</option>
@@ -1900,6 +1915,8 @@ function openContactColumnsModal() {
       if (which === "status") contactsFilters.status = e.target.value;
       if (which === "account") contactsFilters.accountId = e.target.value;
       if (which === "owner") contactsFilters.ownerId = e.target.value;
+      if (which === "title") contactsFilters.title = e.target.value;
+      if (which === "draftType") contactsFilters.draftType = e.target.value;
       renderContacts();
     });
   });
@@ -1920,7 +1937,7 @@ const CONTACT_STATUSES = [
 // filter for a future column: add the field here, add its control to the
 // filter bar in renderContacts() below, and add its check to
 // contactMatchesFilters().
-let contactsFilters = { search: "", status: "", accountId: "", ownerId: "" };
+let contactsFilters = { search: "", status: "", accountId: "", ownerId: "", title: "", draftType: "", dateFrom: "", dateTo: "" };
 
 // Set only when arriving from the Dashboard's "Total Contacts" card (array
 // of owner_ids matching whatever scope produced that count) -- same idea as
@@ -1935,6 +1952,10 @@ function contactMatchesFilters(c) {
   if (f.status && (c.status || "Fresh") !== f.status) return false;
   if (f.accountId && String(c.account_id || "") !== f.accountId) return false;
   if (f.ownerId && String(c.owner_id || "") !== f.ownerId) return false;
+  if (f.title && (c.title || "") !== f.title) return false;
+  if (f.draftType && (c.draft_mode || "none") !== f.draftType) return false;
+  if (f.dateFrom && (!c.created_at || c.created_at < f.dateFrom)) return false;
+  if (f.dateTo && (!c.created_at || c.created_at > f.dateTo)) return false;
   if (f.search) {
     const q = f.search.toLowerCase();
     const haystack = `${c.first_name} ${c.last_name} ${c.title || ""} ${c.email || ""}`.toLowerCase();
@@ -1960,8 +1981,9 @@ function contactsOwnerFilterOptions() {
 
 function renderContacts() {
   const filteredContacts = state.contacts.filter(contactMatchesFilters);
-  const filtersActive = Boolean(contactsFilters.search || contactsFilters.status || contactsFilters.accountId || contactsFilters.ownerId);
+  const filtersActive = Boolean(contactsFilters.search || contactsFilters.status || contactsFilters.accountId || contactsFilters.ownerId || contactsFilters.title || contactsFilters.draftType || contactsFilters.dateFrom || contactsFilters.dateTo);
   const ownerOptions = contactsOwnerFilterOptions();
+  const titleOptions = Array.from(new Set(state.contacts.map((c) => c.title).filter(Boolean))).sort();
 
   // Drop any selected ids that no longer exist (contact deleted elsewhere)
   // so "N selected" never counts a row that isn't on screen anymore, and so
@@ -1982,6 +2004,18 @@ function renderContacts() {
         <option value="">All accounts</option>
         ${state.accounts.slice().sort((a, b) => a.name.localeCompare(b.name)).map((a) => `<option value="${a.id}" ${contactsFilters.accountId === String(a.id) ? "selected" : ""}>${a.name}</option>`).join("")}
       </select>
+      <select id="contacts-filter-title">
+        <option value="">All titles</option>
+        ${titleOptions.map((t) => `<option value="${escapeAttr(t)}" ${contactsFilters.title === t ? "selected" : ""}>${t}</option>`).join("")}
+      </select>
+      <select id="contacts-filter-drafttype">
+        <option value="">All draft types</option>
+        <option value="auto" ${contactsFilters.draftType === "auto" ? "selected" : ""}>Auto</option>
+        <option value="manual" ${contactsFilters.draftType === "manual" ? "selected" : ""}>Manual</option>
+        <option value="none" ${contactsFilters.draftType === "none" ? "selected" : ""}>— (none)</option>
+      </select>
+      <input type="date" id="contacts-filter-date-from" value="${contactsFilters.dateFrom}" title="Created on/after" />
+      <input type="date" id="contacts-filter-date-to" value="${contactsFilters.dateTo}" title="Created on/before" />
       ${ownerOptions ? `
         <select id="contacts-filter-owner">
           <option value="">All owners</option>
@@ -2153,6 +2187,22 @@ function renderContacts() {
     contactsFilters.accountId = e.target.value;
     renderContacts();
   });
+  document.getElementById("contacts-filter-title").addEventListener("change", (e) => {
+    contactsFilters.title = e.target.value;
+    renderContacts();
+  });
+  document.getElementById("contacts-filter-drafttype").addEventListener("change", (e) => {
+    contactsFilters.draftType = e.target.value;
+    renderContacts();
+  });
+  document.getElementById("contacts-filter-date-from").addEventListener("change", (e) => {
+    contactsFilters.dateFrom = e.target.value;
+    renderContacts();
+  });
+  document.getElementById("contacts-filter-date-to").addEventListener("change", (e) => {
+    contactsFilters.dateTo = e.target.value;
+    renderContacts();
+  });
   const ownerFilterEl = document.getElementById("contacts-filter-owner");
   if (ownerFilterEl) {
     ownerFilterEl.addEventListener("change", (e) => {
@@ -2163,7 +2213,7 @@ function renderContacts() {
   const filterClearBtn = document.getElementById("contacts-filter-clear-btn");
   if (filterClearBtn) {
     filterClearBtn.addEventListener("click", () => {
-      contactsFilters = { search: "", status: "", accountId: "", ownerId: "" };
+      contactsFilters = { search: "", status: "", accountId: "", ownerId: "", title: "", draftType: "", dateFrom: "", dateTo: "" };
       renderContacts();
     });
   }

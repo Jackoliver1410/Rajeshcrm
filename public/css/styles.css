@@ -361,6 +361,7 @@ body[data-sidebar="collapsed"] .sidebar-expand-btn { display: flex; }
    text. Fixed widths keep the row's total size predictable regardless of
    what the options say; long option text just clips inside the box. */
 .topbar-filters input[type="text"] { width: 150px; flex-shrink: 0; }
+.topbar-filters input[type="date"] { width: 132px; flex-shrink: 0; }
 .topbar-filters select { width: 106px; flex-shrink: 0; text-overflow: ellipsis; }
 .topbar-filter-count { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
 .topbar-divider { width: 1px; align-self: stretch; background: var(--border); margin: 2px 2px; }
