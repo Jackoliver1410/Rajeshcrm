@@ -743,6 +743,23 @@ function escapeAttr(str) {
   return String(str).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 }
 
+// Every LinkedIn/Sales Navigator/Salesforce URL field in the app used to be
+// <input type="url">, which triggers the browser's own "Please enter a URL"
+// validation -- and that validation demands a full absolute URL with an
+// http(s):// scheme. "www.linkedin.com/in/x" or "linkedin.com/in/x" (exactly
+// what someone naturally types or pastes, without thinking to add the
+// scheme) both fail it and block submission, even though they're perfectly
+// usable once a scheme is added. These fields are plain type="text" now, and
+// this runs on save instead: leave a value with a scheme alone, add
+// "https://" to one without, leave blank alone. No more manual "https://" or
+// "www." required, and nothing here can produce a browser validation error.
+function normalizeUrlInput(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
 function roleLabel(role) {
   return { admin: "Admin", manager: "Manager", sub_admin: "Sub-Admin", sales_rep: "Sales Rep", hr: "HR" }[role] || role;
 }
@@ -1321,7 +1338,7 @@ function leadFormFieldsHtml(v) {
     <input type="hidden" name="contact_linked_id" id="lead-contact-linked-id" value="${v.contact_linked_id || ""}" />
     <label>Designation</label><input id="lead-designation" name="designation" value="${escapeAttr(v.designation || "")}" />
     <label>Contact person location</label><input id="lead-contact-location" name="contact_location" value="${escapeAttr(v.contact_location || "")}" />
-    <label>LinkedIn link</label><input id="lead-linkedin-link" name="linkedin_link" type="url" value="${escapeAttr(v.linkedin_link || "")}" placeholder="https://linkedin.com/in/..." />
+    <label>LinkedIn link</label><input id="lead-linkedin-link" name="linkedin_link" type="text" value="${escapeAttr(v.linkedin_link || "")}" placeholder="linkedin.com/in/..." />
     <label>Additional guests &amp; designations</label>
     <textarea name="additional_guests" rows="2" placeholder="One per line, e.g. Jane Doe — VP Engineering">${v.additional_guests || ""}</textarea>
     <label>Demo date</label><input name="demo_date" type="date" value="${v.demo_date ? v.demo_date.slice(0, 10) : ""}" />
@@ -1344,7 +1361,7 @@ function leadFormFieldsHtml(v) {
     <label>Industry</label><input id="lead-industry" name="industry" value="${escapeAttr(v.industry || "")}" />
 
     <label>Salesforce current status</label><input name="sf_status" value="${escapeAttr(v.sf_status || "")}" />
-    <label>Salesforce link</label><input name="sf_link" type="url" value="${escapeAttr(v.sf_link || "")}" placeholder="https://...salesforce.com/..." />
+    <label>Salesforce link</label><input name="sf_link" type="text" value="${escapeAttr(v.sf_link || "")}" placeholder="...salesforce.com/..." />
     <label>Remarks</label><textarea name="remarks" rows="3">${v.remarks || ""}</textarea>
   `;
 }
@@ -1456,6 +1473,8 @@ function openLeadFormModal() {
   document.getElementById("lead-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = Object.fromEntries(new FormData(e.target));
+    fd.linkedin_link = normalizeUrlInput(fd.linkedin_link);
+    fd.sf_link = normalizeUrlInput(fd.sf_link);
     try {
       await api("/api/leads", { method: "POST", body: fd });
       toast("Lead created");
@@ -1532,6 +1551,8 @@ function openLeadDetailModal(lead) {
   document.getElementById("lead-detail-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = Object.fromEntries(new FormData(e.target));
+    fd.linkedin_link = normalizeUrlInput(fd.linkedin_link);
+    fd.sf_link = normalizeUrlInput(fd.sf_link);
     try {
       if (showRequestChangeFlow) {
         await api(`/api/leads/${lead.id}/request-change`, { method: "POST", body: fd });
@@ -2848,8 +2869,8 @@ function openContactFormModal(existing) {
       <label>Title</label><input id="contact-title-input" name="title" value="${escapeAttr(v.title || "")}" />
       <label>Email</label><input id="contact-email-input" name="email" type="email" value="${escapeAttr(v.email || "")}" />
       <label>Phone</label><input name="phone" value="${escapeAttr(v.phone || "")}" />
-      <label>LinkedIn URL</label><input id="contact-linkedin-input" name="linkedin_url" type="url" value="${escapeAttr(v.linkedin_url || "")}" placeholder="https://linkedin.com/in/..." />
-      <label>Sales Navigator URL</label><input name="sales_navigator_url" type="url" value="${escapeAttr(v.sales_navigator_url || "")}" placeholder="https://linkedin.com/sales/lead/..." />
+      <label>LinkedIn URL</label><input id="contact-linkedin-input" name="linkedin_url" type="text" value="${escapeAttr(v.linkedin_url || "")}" placeholder="linkedin.com/in/..." />
+      <label>Sales Navigator URL</label><input name="sales_navigator_url" type="text" value="${escapeAttr(v.sales_navigator_url || "")}" placeholder="linkedin.com/sales/lead/..." />
       <label>Account</label>
       <select name="account_id" id="contact-account-select">
         <option value="">—</option>
@@ -2899,13 +2920,15 @@ function openContactFormModal(existing) {
   });
   document.getElementById("contact-form").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const fd = new FormData(e.target);
+    const body = Object.fromEntries(new FormData(e.target));
+    body.linkedin_url = normalizeUrlInput(body.linkedin_url);
+    body.sales_navigator_url = normalizeUrlInput(body.sales_navigator_url);
     try {
       if (existing) {
-        await api(`/api/contacts/${existing.id}`, { method: "PUT", body: Object.fromEntries(fd) });
+        await api(`/api/contacts/${existing.id}`, { method: "PUT", body });
         toast("Contact updated");
       } else {
-        await api("/api/contacts", { method: "POST", body: Object.fromEntries(fd) });
+        await api("/api/contacts", { method: "POST", body });
         toast("Contact created");
       }
       closeModal();
@@ -2966,7 +2989,7 @@ function renderQuickAddReviewForm(parsed) {
         <label>Company</label><input name="organization_name" value="${parsed.company || ""}" placeholder="Creates or matches an Account" />
         <label>Email</label><input name="email" type="email" value="${parsed.email || ""}" />
         <label>Phone</label><input name="phone" value="${parsed.phone || ""}" />
-        <label>LinkedIn URL</label><input name="linkedin_url" type="url" value="${parsed.linkedin_url || ""}" />
+        <label>LinkedIn URL</label><input name="linkedin_url" type="text" value="${parsed.linkedin_url || ""}" />
         <div class="modal-actions">
           <button type="button" class="btn" onclick="closeModal()">Cancel</button>
           <button type="submit" class="btn btn-primary">Save contact</button>
@@ -2977,6 +3000,7 @@ function renderQuickAddReviewForm(parsed) {
   document.getElementById("quick-add-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = Object.fromEntries(new FormData(e.target));
+    fd.linkedin_url = normalizeUrlInput(fd.linkedin_url);
     try {
       await api("/api/prospecting/import-contact", { method: "POST", body: fd });
       toast("Contact saved");
@@ -4279,7 +4303,7 @@ function openAccountFormModal(existing) {
         <input name="revenue" id="acct-revenue-input" value="${escapeAttr(v.revenue || "")}" placeholder="e.g. $50M" style="flex:1" />
         <a href="#" id="acct-revenue-search-link" class="btn" style="white-space:nowrap">Search on Google</a>
       </div>
-      <label>Sales Navigator URL</label><input id="acct-salesnav-input" name="sales_navigator_url" type="url" value="${v.sales_navigator_url || ""}" placeholder="https://linkedin.com/sales/company/..." />
+      <label>Sales Navigator URL</label><input id="acct-salesnav-input" name="sales_navigator_url" type="text" value="${v.sales_navigator_url || ""}" placeholder="linkedin.com/sales/company/..." />
       <div class="modal-actions">
         <button type="button" class="btn" onclick="closeModal()">Cancel</button>
         <button type="submit" class="btn btn-primary">${existing ? "Save changes" : "Create account"}</button>
@@ -4343,15 +4367,16 @@ function openAccountFormModal(existing) {
   });
   document.getElementById("account-form").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const fd = new FormData(e.target);
+    const body = Object.fromEntries(new FormData(e.target));
+    body.sales_navigator_url = normalizeUrlInput(body.sales_navigator_url);
     try {
       if (existing) {
-        const updated = await api(`/api/accounts/${existing.id}`, { method: "PUT", body: Object.fromEntries(fd) });
+        const updated = await api(`/api/accounts/${existing.id}`, { method: "PUT", body });
         const idx = state.accounts.findIndex((a) => a.id === existing.id);
         if (idx !== -1) state.accounts[idx] = updated;
         toast("Account updated");
       } else {
-        await api("/api/accounts", { method: "POST", body: Object.fromEntries(fd) });
+        await api("/api/accounts", { method: "POST", body });
         toast("Account created");
       }
       closeModal();
@@ -4833,7 +4858,7 @@ function openAccountDetailModal(account) {
         <div class="hint" style="margin-top:8px">Generated ${new Date(account.linkedin_profile.generated_at).toLocaleString()} from <a href="${account.linkedin_profile.url}" target="_blank" rel="noopener" style="color:var(--teal)">${account.linkedin_profile.url}</a> via live web search — LinkedIn pages require login to view in full, so this reflects only what's publicly discoverable. Verify before acting on it.</div>
       ` : `<div class="empty-state">No LinkedIn research yet — paste a company LinkedIn/Sales Navigator URL and run a search.</div>`}
       <div style="display:flex;gap:8px;margin-top:10px">
-        <input type="url" id="linkedin-search-url" placeholder="https://linkedin.com/company/…" value="${escapeAttr(account.linkedin_profile?.url || account.sales_navigator_url || "")}" style="flex:1" />
+        <input type="text" id="linkedin-search-url" placeholder="linkedin.com/company/…" value="${escapeAttr(account.linkedin_profile?.url || account.sales_navigator_url || "")}" style="flex:1" />
         <button type="button" class="btn btn-small btn-primary" id="linkedin-search-btn">${account.linkedin_profile?.text ? "Regenerate" : "LinkedIn Search"}</button>
       </div>
     </div>
@@ -4845,7 +4870,7 @@ function openAccountDetailModal(account) {
       </div>
       ${linkedinCompanyPanelHtml(account.linkedin_company)}
       <div style="display:flex;gap:8px;margin-top:10px">
-        <input type="url" id="linkedin-company-url" placeholder="https://linkedin.com/company/…" value="${escapeAttr(account.linkedin_company?.profile_url || account.sales_navigator_url || "")}" style="flex:1" />
+        <input type="text" id="linkedin-company-url" placeholder="linkedin.com/company/…" value="${escapeAttr(account.linkedin_company?.profile_url || account.sales_navigator_url || "")}" style="flex:1" />
         <button type="button" class="btn btn-small btn-primary" id="linkedin-company-btn">${account.linkedin_company ? "Refresh" : "Fetch profile"}</button>
       </div>
 
@@ -4955,7 +4980,7 @@ function openAccountDetailModal(account) {
   document.getElementById("linkedin-search-btn").addEventListener("click", async () => {
     const btn = document.getElementById("linkedin-search-btn");
     const idleLabel = account.linkedin_profile?.text ? "Regenerate" : "LinkedIn Search";
-    const url = document.getElementById("linkedin-search-url").value.trim();
+    const url = normalizeUrlInput(document.getElementById("linkedin-search-url").value);
     if (!url) { toast("Paste a LinkedIn URL first", "error"); return; }
     btn.disabled = true;
     btn.textContent = "Searching…";
@@ -4974,7 +4999,7 @@ function openAccountDetailModal(account) {
   document.getElementById("linkedin-company-btn").addEventListener("click", async () => {
     const btn = document.getElementById("linkedin-company-btn");
     const idleLabel = account.linkedin_company ? "Refresh" : "Fetch profile";
-    const url = document.getElementById("linkedin-company-url").value.trim();
+    const url = normalizeUrlInput(document.getElementById("linkedin-company-url").value);
     if (!url) { toast("Paste a LinkedIn company URL first", "error"); return; }
     btn.disabled = true;
     btn.textContent = "Fetching…";
