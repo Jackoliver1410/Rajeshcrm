@@ -868,13 +868,21 @@ table.resizable-table td:last-child { position: relative; }
 .email-icon-active:hover { background: rgba(30, 58, 232, 0.2); }
 .email-icon-empty { color: var(--text-dim); background: var(--panel-2); opacity: 0.6; cursor: default; }
 
-/* Status/Draft Type dropdowns were shrinking to fit the column's auto width
-   (the base input/select rule below is width:100%, which has nothing to
-   push against in a narrow table cell) -- wide enough here to always show
-   the longest option in full ("5th Followup") rather than clipping to a
-   sliver with the text invisible. */
-.contacts-table select[data-status-select] { width: auto; min-width: 140px; }
-.contacts-table select[data-draft-mode-select] { width: auto; min-width: 100px; }
+/* Status/Draft Type dropdowns: a fixed box, not width:auto. width:auto let
+   each select grow or shrink with whichever option text was currently
+   selected ("Fresh" vs "5th Followup"), so neighboring columns visibly
+   shifted/overlapped ("mixed together") depending on which row you looked
+   at. A fixed width plus ellipsis keeps every row's box the same size
+   regardless of its content -- long option text truncates instead of
+   pushing the layout around. */
+.contacts-table select[data-status-select],
+.contacts-table select[data-draft-mode-select] {
+  width: 128px;
+  max-width: 128px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* LinkedIn column: a small "in" glyph instead of a raw URL field -- brand
    blue and clickable when a URL is on file, muted and inert when not. */
@@ -888,7 +896,7 @@ table.resizable-table td:last-child { position: relative; }
    out the row height or column width. */
 .draft-pill {
   display: inline-block;
-  max-width: 160px;
+  max-width: 140px;
   padding: 3px 10px;
   border-radius: 999px;
   border: 1px solid var(--border-strong);

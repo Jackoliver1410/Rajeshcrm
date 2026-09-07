@@ -1808,22 +1808,25 @@ function todayISO() {
 function contactExportColumns() {
   const canSeeOwner = ["admin", "manager"].includes(state.user.role);
   const headers = [
-    "Date", "First name", "Last name", "Title", "Account", "Email", "Phone", "LinkedIn URL", "Sales Navigator URL",
+    "Date", "First name", "Last name", "Title", "Location", "Account", "Email", "Phone", "LinkedIn URL", "Sales Navigator URL",
     ...(canSeeOwner ? ["Owner"] : []),
     "Status", "IQ Notes", "Email Date",
-    "Draft Mode", "Draft",
-    "Follow-up 1", "Follow-up 2", "Follow-up 3", "Follow-up 4", "Follow-up 5",
+    "Draft Mode", "Subject", "Draft",
+    "Follow-up 1 Subject", "Follow-up 1", "Follow-up 2 Subject", "Follow-up 2",
+    "Follow-up 3 Subject", "Follow-up 3", "Follow-up 4 Subject", "Follow-up 4", "Follow-up 5 Subject", "Follow-up 5",
     "Response",
   ];
   const rowFn = (c) => {
     const followups = c.draft_mode === "auto" && Array.isArray(c.followups) ? c.followups : ["", "", "", "", ""];
+    const followupSubjects = c.draft_mode === "auto" && Array.isArray(c.followup_subjects) ? c.followup_subjects : ["", "", "", "", ""];
     return [
-      shortDate(c.created_at), c.first_name, c.last_name, c.title || "", accountName(c.account_id) === "—" ? "" : accountName(c.account_id),
+      shortDate(c.created_at), c.first_name, c.last_name, c.title || "", c.location || c.li_capture?.location || "",
+      accountName(c.account_id) === "—" ? "" : accountName(c.account_id),
       c.email || "", c.phone || "", c.linkedin_url || "", c.sales_navigator_url || "",
       ...(canSeeOwner ? [userName(c.owner_id)] : []),
       c.status || "Fresh", c.iq_notes || "", shortDate(c.last_emailed_at),
-      c.draft_mode ? (c.draft_mode === "auto" ? "Auto" : "Manual") : "", c.draft_text || "",
-      ...[0, 1, 2, 3, 4].map((i) => followups[i] || ""),
+      c.draft_mode ? (c.draft_mode === "auto" ? "Auto" : "Manual") : "", c.draft_subject || "", c.draft_text || "",
+      ...[0, 1, 2, 3, 4].flatMap((i) => [followupSubjects[i] || "", followups[i] || ""]),
       c.response_text || "",
     ];
   };
@@ -1955,15 +1958,16 @@ function contactColumnDefs() {
   return [
     { id: "date", label: "Date" },
     { id: "title", label: "Title" },
+    { id: "location", label: "Location" },
     { id: "account", label: "Account" },
     { id: "email", label: "Email" },
-    { id: "emailIcon", label: "Send" },
     { id: "linkedin", label: "LinkedIn" },
     { id: "iq", label: "IQ" },
     ...(canSeeOwner ? [{ id: "owner", label: "Owner" }] : []),
     { id: "status", label: "Status" },
     { id: "draftType", label: "Draft Type" },
     { id: "draft", label: "Draft" },
+    { id: "emailIcon", label: "Send" },
     { id: "emailDate", label: "Email Date" },
     { id: "response", label: "Response" },
   ];
@@ -2213,6 +2217,7 @@ function contactFilterDefs() {
     name: { label: "Name", kind: "text", getValue: (c) => `${c.first_name || ""} ${c.last_name || ""}` },
     date: { label: "Date", kind: "dateRange", getValue: (c) => c.created_at },
     title: { label: "Title", kind: "select", getValue: (c) => c.title || "", getOptions: () => Array.from(new Set(state.contacts.map((c) => c.title).filter(Boolean))).sort().map((t) => ({ value: t, label: t })) },
+    location: { label: "Location", kind: "text", getValue: (c) => c.location || c.li_capture?.location || "" },
     account: { label: "Account", kind: "select", getValue: (c) => String(c.account_id || ""), getOptions: () => state.accounts.slice().sort((a, b) => a.name.localeCompare(b.name)).map((a) => ({ value: String(a.id), label: a.name })) },
     email: { label: "Email", kind: "text", getValue: (c) => c.email || "" },
     emailIcon: { label: "Send", kind: "boolean", getValue: (c) => Boolean(c.email) },
@@ -2311,15 +2316,16 @@ function renderContacts() {
           <th>${cf("name", "Name")}</th>
           ${cv("date") ? `<th>${cf("date", "Date")}</th>` : ""}
           ${cv("title") ? `<th>${cf("title", "Title")}</th>` : ""}
+          ${cv("location") ? `<th>${cf("location", "Location")}</th>` : ""}
           ${cv("account") ? `<th>${cf("account", "Account")}</th>` : ""}
           ${cv("email") ? `<th>${cf("email", "Email")}</th>` : ""}
-          ${cv("emailIcon") ? `<th style="text-align:center">${cf("emailIcon", "Send")}</th>` : ""}
           ${cv("linkedin") ? `<th style="text-align:center">${cf("linkedin", "LinkedIn")}</th>` : ""}
           ${cv("iq") ? `<th style="text-align:center">${cf("iq", "IQ")}</th>` : ""}
           ${cv("owner") ? `<th>${cf("owner", "Owner")}</th>` : ""}
           ${cv("status") ? `<th>${cf("status", "Status")}</th>` : ""}
           ${cv("draftType") ? `<th>${cf("draftType", "Draft Type")}</th>` : ""}
           ${cv("draft") ? `<th>${cf("draft", "Draft")}</th>` : ""}
+          ${cv("emailIcon") ? `<th style="text-align:center">${cf("emailIcon", "Send")}</th>` : ""}
           ${cv("emailDate") ? `<th>${cf("emailDate", "Email Date")}</th>` : ""}
           ${cv("response") ? `<th>${cf("response", "Response")}</th>` : ""}
           <th style="width:34px">${filtersToggleButtonHtml("contacts", contactsFiltersOn)}</th>
@@ -2331,15 +2337,9 @@ function renderContacts() {
               <td>${c.first_name} ${c.last_name}</td>
               ${cv("date") ? `<td>${shortDate(c.created_at)}</td>` : ""}
               ${cv("title") ? `<td>${c.title || "—"}</td>` : ""}
+              ${cv("location") ? `<td>${escapeAttr(c.location || c.li_capture?.location || "") || "—"}</td>` : ""}
               ${cv("account") ? `<td>${accountName(c.account_id)}</td>` : ""}
               ${cv("email") ? `<td>${c.email || "—"}</td>` : ""}
-              ${cv("emailIcon") ? `
-                <td onclick="event.stopPropagation()" style="text-align:center">
-                  ${c.email
-                    ? `<button type="button" class="email-icon email-icon-active" data-email-send="${c.id}" title="Send email">${EMAIL_ICON_SVG}</button>`
-                    : `<span class="email-icon email-icon-empty" title="No email on file">${EMAIL_ICON_SVG}</span>`}
-                </td>
-              ` : ""}
               ${cv("linkedin") ? `
                 <td onclick="event.stopPropagation()" style="text-align:center">
                   ${c.linkedin_url
@@ -2374,8 +2374,15 @@ function renderContacts() {
               ${cv("draft") ? `
                 <td onclick="event.stopPropagation()">
                   <button type="button" class="draft-pill" data-draft-open="${c.id}" title="${c.draft_text ? "Click to view/edit draft" : "Click to add a draft"}">
-                    ${c.draft_text ? escapeAttr(c.draft_text.slice(0, 42)) + (c.draft_text.length > 42 ? "…" : "") : "+ Add"}
+                    ${c.draft_text ? escapeAttr(c.draft_text.slice(0, 30)) + (c.draft_text.length > 30 ? "…" : "") : "+ Add"}
                   </button>
+                </td>
+              ` : ""}
+              ${cv("emailIcon") ? `
+                <td onclick="event.stopPropagation()" style="text-align:center">
+                  ${c.email
+                    ? `<button type="button" class="email-icon email-icon-active" data-email-send="${c.id}" title="Send email">${EMAIL_ICON_SVG}</button>`
+                    : `<span class="email-icon email-icon-empty" title="No email on file">${EMAIL_ICON_SVG}</span>`}
                 </td>
               ` : ""}
               ${cv("emailDate") ? `<td>${shortDate(c.last_emailed_at)}</td>` : ""}
@@ -2677,6 +2684,21 @@ const FILTERS_TOGGLE_ICON_SVG = `<svg viewBox="0 0 24 24" width="16" height="16"
 // Negative/LinkedIn) are outcome tags, not sequence stages, so picking one
 // of those never triggers a draft generation.
 const AUTO_DRAFT_STAGES = new Set(["Fresh", "1st Followup", "2nd Followup", "3rd Followup", "4th Followup", "5th Followup"]);
+// Same list, ordered -- lets the UI find "which followup slot (0-4) does
+// this stage map to" (mirrors lib/ai.js's STAGE_ORDER on the server).
+const AUTO_DRAFT_STAGE_ORDER = ["Fresh", "1st Followup", "2nd Followup", "3rd Followup", "4th Followup", "5th Followup"];
+
+// Reads whatever's saved for one stage of a contact's auto-draft sequence
+// -- Fresh lives on draft_text/draft_subject directly, every numbered
+// Follow-up lives at its index in the followups/followup_subjects arrays.
+function stageDraftFor(c, stage) {
+  const stageIndex = AUTO_DRAFT_STAGE_ORDER.indexOf(stage);
+  if (stageIndex <= 0) return { subject: c.draft_subject || "", body: c.draft_text || "" };
+  const idx = stageIndex - 1;
+  const followups = Array.isArray(c.followups) ? c.followups : [];
+  const subjects = Array.isArray(c.followup_subjects) ? c.followup_subjects : [];
+  return { subject: subjects[idx] || "", body: followups[idx] || "" };
+}
 
 // Fires the stage-chained AI draft for whatever Status a contact is
 // currently set to, but only when that contact has already opted into Auto
@@ -2784,32 +2806,54 @@ function openDraftChooserModal(c) {
   document.getElementById("draft-choose-manual").addEventListener("click", () => openManualDraftModal(c));
 }
 
-function renderSequenceEditor(draft, followups) {
-  const fu = followups && followups.length ? followups : ["", "", "", "", ""];
+// Renders ONLY the currently-selected stage's subject + body -- not the
+// other 5 stages. Earlier versions always showed the Fresh draft plus all
+// 5 follow-ups stacked in one long modal regardless of which stage the
+// contact's Status was actually on, which mixed up-to-6 emails' worth of
+// text into a single screen. Whatever's already saved for the OTHER
+// stages is left exactly as-is in the contact record -- it just isn't
+// rendered here; switching Status back to that stage (and reopening this
+// modal) shows it again.
+function renderSequenceEditor(subject, body) {
   return `
-    <label>Draft (editable)</label>
-    <textarea id="seq-draft-text" class="draft-font" rows="5">${draft || ""}</textarea>
-    ${fu.map((f, i) => `
-      <label style="margin-top:10px">Follow-up ${i + 1}</label>
-      <textarea id="seq-followup-${i}" class="draft-font" rows="3">${f || ""}</textarea>
-    `).join("")}
+    <label>Subject</label>
+    <input id="seq-subject" value="${escapeAttr(subject || "")}" placeholder="Subject line" />
+    <label style="margin-top:10px">Draft (editable)</label>
+    <textarea id="seq-draft-text" class="draft-font" rows="6">${body || ""}</textarea>
     <div class="modal-actions" style="margin-top:10px">
       <button type="button" class="btn btn-primary" id="seq-save-btn">Save draft</button>
     </div>
   `;
 }
 
-function wireSequenceSave(contactId) {
+function wireSequenceSave(c, stage) {
   document.getElementById("seq-save-btn").addEventListener("click", async () => {
     const btn = document.getElementById("seq-save-btn");
-    const draft_text = document.getElementById("seq-draft-text").value;
-    const followups = [0, 1, 2, 3, 4].map((i) => document.getElementById(`seq-followup-${i}`).value);
+    const subject = document.getElementById("seq-subject").value;
+    const body = document.getElementById("seq-draft-text").value;
+    const stageIndex = AUTO_DRAFT_STAGE_ORDER.indexOf(stage);
+    // Only this one stage's subject/body changes -- the other stages'
+    // already-saved content is read back off the contact and passed
+    // through untouched, since the API stores the full arrays.
+    const patch = { draft_mode: "auto" };
+    if (stageIndex <= 0) {
+      patch.draft_text = body;
+      patch.draft_subject = subject;
+    } else {
+      const idx = stageIndex - 1;
+      const followups = Array.isArray(c.followups) ? [...c.followups] : ["", "", "", "", ""];
+      const subjects = Array.isArray(c.followup_subjects) ? [...c.followup_subjects] : ["", "", "", "", ""];
+      followups[idx] = body;
+      subjects[idx] = subject;
+      patch.followups = followups;
+      patch.followup_subjects = subjects;
+    }
     btn.disabled = true;
     btn.textContent = "Saving…";
     try {
-      const updated = await api(`/api/contacts/${contactId}`, { method: "PUT", body: { draft_mode: "auto", draft_text, followups } });
-      const idx = state.contacts.findIndex((x) => x.id === contactId);
-      if (idx !== -1) state.contacts[idx] = updated;
+      const updated = await api(`/api/contacts/${c.id}`, { method: "PUT", body: patch });
+      const idx2 = state.contacts.findIndex((x) => x.id === c.id);
+      if (idx2 !== -1) state.contacts[idx2] = updated;
       toast("Draft saved");
       closeModal();
       renderContacts();
@@ -2834,12 +2878,13 @@ function wireSequenceSave(contactId) {
 // "when I select Fresh and Auto, generate automatically." Regenerate redoes
 // just the current stage; earlier stages already saved are left alone.
 function openAutoDraftModal(c) {
-  const hasExisting = c.draft_mode === "auto" && (c.draft_text || (c.followups || []).some(Boolean));
   const stage = c.status || "Fresh";
   const stageIsAutoable = AUTO_DRAFT_STAGES.has(stage);
+  const current = stageDraftFor(c, stage);
+  const hasExisting = c.draft_mode === "auto" && Boolean(current.body);
   openModal(`
     <h2>✨ Auto-generate draft — ${c.first_name} ${c.last_name}</h2>
-    <div style="color:var(--text-dim);font-size:13px;margin-bottom:14px">Generates this contact's "${escapeAttr(stage)}" email from the linked Account, this contact's IQ notes, your company profile, and anything already drafted for earlier stages -- plus whatever you add below.</div>
+    <div style="color:var(--text-dim);font-size:13px;margin-bottom:14px">Generates this contact's "${escapeAttr(stage)}" email (subject + body) from the linked Account, this contact's IQ notes, your company profile, and anything already drafted for earlier stages -- plus whatever you add below. Only the "${escapeAttr(stage)}" stage is shown here -- switch Status to see/edit a different stage.</div>
     ${stageIsAutoable ? `
       <label>Extra context (optional)</label>
       <textarea id="seq-context" rows="3" placeholder="e.g. recent funding round, a pain point from the call, product angle to lead with…"></textarea>
@@ -2847,12 +2892,12 @@ function openAutoDraftModal(c) {
         <button type="button" class="btn btn-primary" id="seq-generate-btn">${hasExisting ? `Regenerate ${escapeAttr(stage)}` : `Generate ${escapeAttr(stage)}`}</button>
       </div>
     ` : `<div class="hint" style="color:var(--coral)">Auto-draft only applies to the Fresh/Follow-up statuses -- set this contact's Status to one of those first, then come back here.</div>`}
-    <div id="seq-result" style="margin-top:14px">${hasExisting ? renderSequenceEditor(c.draft_text, c.followups || []) : ""}</div>
+    <div id="seq-result" style="margin-top:14px">${hasExisting ? renderSequenceEditor(current.subject, current.body) : ""}</div>
     <div class="modal-actions">
       <button type="button" class="btn" onclick="closeModal()">Close</button>
     </div>
   `, { wide: true });
-  if (hasExisting) wireSequenceSave(c.id);
+  if (hasExisting) wireSequenceSave(c, stage);
 
   const runGenerate = async () => {
     const btn = document.getElementById("seq-generate-btn");
@@ -2863,14 +2908,14 @@ function openAutoDraftModal(c) {
     btn.disabled = true;
     btn.textContent = "Generating…";
     try {
-      const { contact: updated, stage: gotStage } = await api("/api/ai/draft-stage", {
+      const { contact: updated, stage: gotStage, subject, text } = await api("/api/ai/draft-stage", {
         method: "POST",
         body: { contact_id: c.id, context: contextEl ? contextEl.value.trim() : "" },
       });
       const idx = state.contacts.findIndex((x) => x.id === c.id);
       if (idx !== -1) state.contacts[idx] = updated;
-      resultEl.innerHTML = renderSequenceEditor(updated.draft_text, updated.followups || []);
-      wireSequenceSave(c.id);
+      resultEl.innerHTML = renderSequenceEditor(subject, text);
+      wireSequenceSave(updated, gotStage);
       toast(`Draft generated for ${gotStage}`);
     } catch (err) {
       resultEl.innerHTML = `<div class="hint" style="color:var(--coral);margin-top:10px">${err.message}</div>`;
@@ -2891,10 +2936,13 @@ function openAutoDraftModal(c) {
 // Manual mode: the rep just writes/pastes their own draft -- no AI call, no
 // follow-up sequence (a manual draft is a single message the rep owns).
 function openManualDraftModal(c) {
+  const existingSubject = c.draft_mode === "manual" ? (c.draft_subject || "") : "";
   const existing = c.draft_mode === "manual" ? (c.draft_text || "") : "";
   openModal(`
     <h2>Write draft — ${c.first_name} ${c.last_name}</h2>
-    <label>Draft</label>
+    <label>Subject</label>
+    <input id="manual-draft-subject" value="${escapeAttr(existingSubject)}" placeholder="Subject line" />
+    <label style="margin-top:10px">Draft</label>
     <textarea id="manual-draft-text" class="draft-font" rows="8" placeholder="Paste or write your outreach draft…">${existing}</textarea>
     <div class="modal-actions">
       <button type="button" class="btn" onclick="closeModal()">Cancel</button>
@@ -2903,12 +2951,13 @@ function openManualDraftModal(c) {
   `);
   document.getElementById("manual-draft-save-btn").addEventListener("click", async () => {
     const btn = document.getElementById("manual-draft-save-btn");
+    const draft_subject = document.getElementById("manual-draft-subject").value;
     const draft_text = document.getElementById("manual-draft-text").value;
     if (!draft_text.trim()) { toast("Enter a draft first", "error"); return; }
     btn.disabled = true;
     btn.textContent = "Saving…";
     try {
-      const updated = await api(`/api/contacts/${c.id}`, { method: "PUT", body: { draft_mode: "manual", draft_text, followups: [] } });
+      const updated = await api(`/api/contacts/${c.id}`, { method: "PUT", body: { draft_mode: "manual", draft_subject, draft_text, followups: [] } });
       const idx = state.contacts.findIndex((x) => x.id === c.id);
       if (idx !== -1) state.contacts[idx] = updated;
       toast("Draft saved");
@@ -3155,7 +3204,7 @@ function openContactDetailModal(c) {
 // decided by `existing` alone, so the submit handler below still POSTs vs.
 // PUTs correctly either way.
 function openContactFormModal(existing, draftOverride) {
-  const base = existing || { first_name: "", last_name: "", title: "", email: "", phone: "", linkedin_url: "", sales_navigator_url: "", account_id: "" };
+  const base = existing || { first_name: "", last_name: "", title: "", location: "", email: "", phone: "", linkedin_url: "", sales_navigator_url: "", account_id: "" };
   const v = draftOverride ? { ...base, ...draftOverride } : base;
   openModal(`
     <h2>${existing ? "Edit" : "New"} contact</h2>
@@ -3167,6 +3216,7 @@ function openContactFormModal(existing, draftOverride) {
       </div>
       <label>Last name</label><input id="contact-last-input" name="last_name" value="${escapeAttr(v.last_name)}" required />
       <label>Title</label><input id="contact-title-input" name="title" value="${escapeAttr(v.title || "")}" />
+      <label>Location</label><input id="contact-location-input" name="location" value="${escapeAttr(v.location || "")}" placeholder="e.g. Austin, TX" />
       <label>Email</label><input id="contact-email-input" name="email" type="email" value="${escapeAttr(v.email || "")}" />
       <label>Phone</label><input id="contact-phone-input" name="phone" value="${escapeAttr(v.phone || "")}" />
       <label>LinkedIn URL</label><input id="contact-linkedin-input" name="linkedin_url" type="text" value="${escapeAttr(v.linkedin_url || "")}" placeholder="linkedin.com/in/..." />
@@ -3202,6 +3252,7 @@ function openContactFormModal(existing, draftOverride) {
       first_name: document.getElementById("contact-first-input").value,
       last_name: document.getElementById("contact-last-input").value,
       title: document.getElementById("contact-title-input").value,
+      location: document.getElementById("contact-location-input").value,
       email: document.getElementById("contact-email-input").value,
       phone: document.getElementById("contact-phone-input").value,
       linkedin_url: document.getElementById("contact-linkedin-input").value,
