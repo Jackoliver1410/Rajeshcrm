@@ -324,9 +324,85 @@ body[data-sidebar="collapsed"] .sidebar-expand-btn { display: flex; }
   padding: 8px 20px;
   flex-wrap: wrap;
   row-gap: 6px;
+  position: relative; /* anchors .leave-ticker, which floats in the gap
+    between .topbar-left and .topbar-right rather than taking part in
+    their flex sizing -- see the comment on .leave-ticker below. */
 }
 
 .topbar h1 { font-size: 1.0625rem; margin: 0; flex-shrink: 0; }
+
+/* Admin-only "who's on leave/WFH today" readout, rendered into
+   #view-title-extra on the Leaves/WFH page (see renderLeave() /
+   startLeaveTicker() in app.js). .topbar-left and .topbar-right are both
+   flex-shrink:0 with space-between on their parent, so the gap between the
+   page title and the topbar's buttons is otherwise just empty room -- this
+   floats centered in that gap via absolute positioning instead of fighting
+   the sibling flex boxes for it. */
+.leave-ticker {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  background: rgba(30, 58, 232, 0.06);
+  border: 1px solid rgba(30, 58, 232, 0.15);
+  border-radius: 999px;
+  padding: 6px 14px;
+  white-space: nowrap;
+  max-width: min(46vw, 380px);
+  pointer-events: none;
+}
+.leave-ticker-clock { position: relative; width: 14px; height: 14px; flex-shrink: 0; }
+.leave-ticker-clock-ring {
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid rgba(30, 58, 232, 0.35);
+  border-radius: 50%;
+}
+.leave-ticker-clock-hand {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1.5px;
+  height: 6px;
+  background: #1e3ae8;
+  transform-origin: 50% 100%;
+  transform: translate(-50%, -100%) rotate(0deg);
+  animation: leave-ticker-hand-spin 3s linear infinite;
+}
+@keyframes leave-ticker-hand-spin {
+  from { transform: translate(-50%, -100%) rotate(0deg); }
+  to { transform: translate(-50%, -100%) rotate(360deg); }
+}
+.leave-ticker-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3ebd82;
+  flex-shrink: 0;
+  animation: leave-ticker-pulse 2.4s ease-in-out infinite;
+}
+@keyframes leave-ticker-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+.leave-ticker-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+.leave-ticker-text.leave-ticker-fading { opacity: 0; transform: translateY(4px); }
+@media (max-width: 900px) {
+  .leave-ticker { display: none; }
+}
 .topbar-left { display: flex; gap: 14px; align-items: center; flex-shrink: 0; }
 .topbar-right { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; row-gap: 6px; justify-content: flex-end; min-width: 0; }
 /* justify-content: flex-end (not the default flex-start) so that when this

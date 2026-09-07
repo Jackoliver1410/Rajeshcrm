@@ -833,6 +833,11 @@ function switchView(view) {
   // which also means it has to be closed by hand on the way to any other
   // view, or it'd be left floating over whatever's rendered next.
   if (typeof closeHeaderFilterPopover === "function") closeHeaderFilterPopover();
+  // Same idea for the Leaves/WFH page's admin-only ticker -- it drives its
+  // own setInterval to cycle through today's names, which would otherwise
+  // keep firing (and touching a #leave-ticker-text that no longer exists)
+  // after navigating to a different view.
+  if (typeof stopLeaveTicker === "function") stopLeaveTicker();
   state.view = view;
   document.querySelectorAll(".nav-item").forEach((el) => el.classList.toggle("active", el.dataset.view === view));
   document.getElementById("settings-gear-btn").classList.toggle("active-icon", view === "settings");
@@ -5592,9 +5597,93 @@ function openAccountDetailModal(account) {
 // delete, same module-level Set pattern as leadsSelected.
 let teamLeaveSelected = new Set();
 
+// ---------- Admin "today's leave/WFH" ticker ----------
+// A small centralized readout, Admin-only, that lives in the Leaves/WFH
+// page's topbar (the #view-title-extra slot between the page title and the
+// + Request Leave button). Cycles through everyone who's on approved leave
+// or WFH today, one name at a time, so an Admin can glance at the page and
+// see who's out without opening the table below.
+
+// Local (not UTC) calendar date as YYYY-MM-DD -- same reasoning as
+// lastNBusinessDays above: a plain start_date/end_date string is a naive
+// local date with no timezone, so "today" has to be computed the same way
+// or the ticker can be a day off for timezones ahead of UTC (e.g. IST).
+function todayIsoLocal() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function todaysLeaveWfhEntries() {
+  const today = todayIsoLocal();
+  return state.leaveRequests
+    .filter((r) => r.status === "approved" && r.start_date <= today && r.end_date >= today)
+    .map((r) => {
+      const typeName = byId(state.leaveTypes, r.leave_type_id)?.name || "Leave";
+      const label = typeName.toLowerCase().includes("work from home") ? "WFH" : typeName;
+      return { name: userName(r.user_id), label };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+let leaveTickerInterval = null;
+let leaveTickerFadeTimeout = null;
+
+function stopLeaveTicker() {
+  if (leaveTickerInterval) { clearInterval(leaveTickerInterval); leaveTickerInterval = null; }
+  if (leaveTickerFadeTimeout) { clearTimeout(leaveTickerFadeTimeout); leaveTickerFadeTimeout = null; }
+}
+
+// Cycles the #leave-ticker-text node through `entries`, one every ~2.4s,
+// fading out/in around the swap (see .leave-ticker-text's opacity
+// transition in styles.css) rather than just snapping to the next name.
+function startLeaveTicker(entries) {
+  stopLeaveTicker();
+  const textEl = document.getElementById("leave-ticker-text");
+  if (!textEl || !entries.length) return;
+  let idx = 0;
+  const show = () => {
+    const e = entries[idx];
+    textEl.textContent = `${e.name} — ${e.label}`;
+  };
+  show();
+  if (entries.length <= 1) return; // nothing to cycle to -- leave it static
+  leaveTickerInterval = setInterval(() => {
+    textEl.classList.add("leave-ticker-fading");
+    leaveTickerFadeTimeout = setTimeout(() => {
+      idx = (idx + 1) % entries.length;
+      show();
+      textEl.classList.remove("leave-ticker-fading");
+    }, 350);
+  }, 2400);
+}
+
 function renderLeave() {
   document.getElementById("topbar-actions").innerHTML = `<button class="btn btn-primary" id="request-leave-btn">+ Request Leave</button>`;
   document.getElementById("request-leave-btn").addEventListener("click", openLeaveRequestModal);
+
+  // Admin-only: a small flashing "who's out today" readout in the topbar's
+  // middle slot. Built here (not left to switchView's generic clear) so it
+  // re-renders with fresh data every time this page loads, and is torn
+  // down by stopLeaveTicker() in switchView() the moment the Admin
+  // navigates elsewhere.
+  const titleExtraEl = document.getElementById("view-title-extra");
+  const tickerEntries = state.user.role === "admin" ? todaysLeaveWfhEntries() : [];
+  if (tickerEntries.length) {
+    titleExtraEl.innerHTML = `
+      <div class="leave-ticker" id="leave-ticker" title="Who's on leave or WFH today">
+        <span class="leave-ticker-clock" aria-hidden="true">
+          <span class="leave-ticker-clock-ring"></span>
+          <span class="leave-ticker-clock-hand"></span>
+        </span>
+        <span class="leave-ticker-dot"></span>
+        <span class="leave-ticker-text" id="leave-ticker-text"></span>
+      </div>
+    `;
+    startLeaveTicker(tickerEntries);
+  } else {
+    titleExtraEl.innerHTML = "";
+    stopLeaveTicker();
+  }
 
   const canApprove = ["manager", "hr", "admin"].includes(state.user.role);
   // Same admin/hr/manager gate as who gets the team/org panel at all -- a
