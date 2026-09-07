@@ -742,6 +742,37 @@ function escapeAttr(str) {
   return String(str).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 }
 
+// Shared by every bulk contact/account import path (CSV, LinkedIn selected-
+// rows) that hits a backend route returning {created, updated, skipped,
+// errors, total}. A plain toast is fine when nothing was skipped; once rows
+// get skipped -- most commonly for a missing Account name now that every
+// Contact requires one -- a bare "3 skipped" toast leaves the admin guessing
+// which rows and why, so this opens a small summary modal listing each
+// skipped row's reason instead.
+function showImportSummary(result, label) {
+  const parts = [];
+  if (result.created) parts.push(`${result.created} created`);
+  if (result.updated) parts.push(`${result.updated} updated`);
+  if (result.skipped) parts.push(`${result.skipped} skipped`);
+  const summary = parts.length ? parts.join(", ") : "Nothing imported";
+  if (!result.errors || !result.errors.length) {
+    closeModal();
+    toast(summary);
+    return;
+  }
+  openModal(`
+    <h2>${label} import summary</h2>
+    <p>${summary}.</p>
+    <div class="hint" style="margin-top:0">These rows were skipped:</div>
+    <ul style="max-height:240px;overflow:auto;padding-left:18px;margin:8px 0;font-size:13px;color:var(--text-dim)">
+      ${result.errors.map((e) => `<li>${escapeAttr(e)}</li>`).join("")}
+    </ul>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-primary" onclick="closeModal()">OK</button>
+    </div>
+  `);
+}
+
 // Every LinkedIn/Sales Navigator/Salesforce URL field in the app used to be
 // <input type="url">, which triggers the browser's own "Please enter a URL"
 // validation -- and that validation demands a full absolute URL with an
@@ -3221,6 +3252,17 @@ function openContactFormModal(existing, draftOverride) {
     const body = Object.fromEntries(new FormData(e.target));
     body.linkedin_url = normalizeUrlInput(body.linkedin_url);
     body.sales_navigator_url = normalizeUrlInput(body.sales_navigator_url);
+    // Every Contact must belong to an Account. Checked here (a plain
+    // window.alert() popup, not the app's own modal) so it doesn't clobber
+    // whatever's already been typed into this form the way replacing
+    // #modal-body would -- the backend (POST /api/contacts) enforces the
+    // same rule as a backstop for any direct API call. Only gates creation,
+    // not editing an existing contact that predates this rule.
+    if (!existing && !body.account_id) {
+      const fullName = `${body.first_name} ${body.last_name}`.trim();
+      alert(`Account name is missing for ${fullName}${body.email ? ` (${body.email})` : ""}.\n\nSelect or create an Account before saving this contact.`);
+      return;
+    }
     try {
       if (existing) {
         await api(`/api/contacts/${existing.id}`, { method: "PUT", body });
@@ -3299,6 +3341,15 @@ function renderQuickAddReviewForm(parsed) {
     e.preventDefault();
     const fd = Object.fromEntries(new FormData(e.target));
     fd.linkedin_url = normalizeUrlInput(fd.linkedin_url);
+    // Same rule as the New Contact form: every Contact needs an Account.
+    // Checked here with a plain popup (not the app's modal, which would
+    // wipe this form) before ever calling the API; the backend
+    // (POST /api/prospecting/import-contact) enforces it too.
+    if (!fd.organization_name || !fd.organization_name.trim()) {
+      const fullName = `${fd.first_name} ${fd.last_name}`.trim();
+      alert(`Account name is missing for ${fullName}${fd.email ? ` (${fd.email})` : ""}.\n\nFill in the Company field before saving this contact.`);
+      return;
+    }
     try {
       await api("/api/prospecting/import-contact", { method: "POST", body: fd });
       toast("Contact saved");
@@ -3581,7 +3632,7 @@ function renderAccountsListView() {
           ${rows.map((a) => `
             <tr class="row-click" data-account="${a.id}">
               <td onclick="event.stopPropagation()"><input type="checkbox" data-account-select="${a.id}" ${accountsSelected.has(a.id) ? "checked" : ""} /></td>
-              <td>${a.name}<span onclick="event.stopPropagation()">${priorityPillHtml(a)}${intentScoreBadgeHtml(a)}<span data-research-trigger="${a.id}" title="Auto Gen — research this company and generate a score" style="cursor:pointer;margin-left:4px;font-size:13px;vertical-align:middle">🔎</span></span></td>
+              <td>${a.name}${accountCountBadgesHtml(a)}<span onclick="event.stopPropagation()">${priorityPillHtml(a)}${intentScoreBadgeHtml(a)}<span data-research-trigger="${a.id}" title="Auto Gen — research this company and generate a score" style="cursor:pointer;margin-left:4px;font-size:13px;vertical-align:middle">🔎</span></span></td>
               <td>${a.industry || "—"}</td>
               <td>${a.website || "—"}</td>
               <td>${a.phone || "—"}</td>
@@ -4272,15 +4323,13 @@ async function importSelectedLinkedInRows(kind) {
     const result = isAccounts
       ? await api("/api/accounts/import", { method: "POST", body: { rows } })
       : await api("/api/contacts/import", { method: "POST", body: { rows } });
-    const parts = [];
-    if (result.created) parts.push(`${result.created} created`);
-    if (result.updated) parts.push(`${result.updated} updated`);
-    if (result.skipped) parts.push(`${result.skipped} skipped`);
-    toast(parts.length ? parts.join(", ") : "Nothing imported");
     linkedInImportSelected = new Set();
     await loadAll();
-    closeModal();
     if (isAccounts) renderAccounts(); else renderContacts();
+    // showImportSummary opens its own modal (or just toasts if nothing was
+    // skipped) -- that replaces this import modal's content either way, so
+    // there's no separate closeModal() call needed here.
+    showImportSummary(result, isAccounts ? "Account" : "Contact");
   } catch (err) {
     toast(err.message, "error");
     btn.disabled = false;
@@ -4687,14 +4736,9 @@ function openContactImportModal() {
     btn.textContent = "Importing…";
     try {
       const result = await api("/api/contacts/import", { method: "POST", body: { rows: parsedRows } });
-      const parts = [];
-      if (result.created) parts.push(`${result.created} created`);
-      if (result.updated) parts.push(`${result.updated} updated`);
-      if (result.skipped) parts.push(`${result.skipped} skipped`);
-      toast(parts.length ? parts.join(", ") : "Nothing imported");
-      closeModal();
       await loadAll();
       renderContacts();
+      showImportSummary(result, "Contact");
     } catch (err) {
       document.getElementById("contact-import-error").textContent = err.message;
       btn.disabled = false;
@@ -5160,6 +5204,45 @@ function accountIqFieldRowHtml(f, research) {
       <textarea id="account-iq-${f.key}" rows="2" readonly style="width:100%;resize:vertical;font:inherit;background:var(--panel-2)" placeholder="Not run yet">${escapeAttr(value)}</textarea>
     </div>
   `;
+}
+
+// Same feature_access convention as hasAccountsGemAccess()/
+// hasSalesforceAccess() above -- absent or true means enabled, only an
+// explicit `false` turns it off.
+function hasLeadsAccess() {
+  return (state.user.feature_access || {}).leads !== false;
+}
+
+// Small colored count badges shown beside an Account's name on the Accounts
+// list: green = total contacts on file for this account, blue = how many of
+// those have actually been emailed at least once (last_emailed_at set), red
+// = how many are marked Bounced, yellow = how many Leads are linked to this
+// account. All computed client-side from state.contacts/state.leads --
+// loadAll() already keeps both in sync with every other view, so no extra
+// fetch is needed here. A zero-count badge is omitted entirely rather than
+// shown as a grey 0, so a quiet account's name doesn't get cluttered with
+// four badges nobody needs to read. Leads' count is skipped for a user
+// whose feature_access has Leads turned off -- state.leads is silently []
+// for them (a 403 swallowed in loadAll()), which would otherwise misread as
+// "no leads" rather than "can't see leads."
+function accountCountBadgesHtml(account) {
+  const contacts = state.contacts.filter((c) => c.account_id === account.id);
+  const total = contacts.length;
+  const reached = contacts.filter((c) => c.last_emailed_at).length;
+  const bounced = contacts.filter((c) => c.status === "Bounced").length;
+  const leadsCount = hasLeadsAccess() ? state.leads.filter((l) => l.account_linked_id === account.id).length : 0;
+
+  const badge = (count, color, title) =>
+    count > 0
+      ? `<span title="${escapeAttr(title)}" style="color:${color};font-weight:700;font-size:12px;margin-left:5px;vertical-align:middle">${count}</span>`
+      : "";
+
+  return [
+    badge(total, "#22c55e", `${total} contact${total === 1 ? "" : "s"} on file`),
+    badge(reached, "#1c7fe0", `${reached} reached — emailed at least once`),
+    badge(bounced, "#ef4444", `${bounced} bounced`),
+    badge(leadsCount, "#eab308", `${leadsCount} linked lead${leadsCount === 1 ? "" : "s"}`),
+  ].join("");
 }
 
 function priorityPillHtml(account) {
