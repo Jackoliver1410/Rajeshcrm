@@ -5595,6 +5595,19 @@ function renderLeave() {
   const canApprove = ["manager", "hr", "admin"].includes(state.user.role);
   const myRequests = state.leaveRequests.filter((r) => r.user_id === state.user.id);
   const pendingOnMe = state.leaveRequests.filter((r) => r.current_approver_id === state.user.id);
+  // GET /api/leave-requests already scopes what lands in state.leaveRequests
+  // server-side -- admin/hr get every user's requests, a manager gets their
+  // own plus their direct reports' (plus anyone explicitly data-granted to
+  // them), everyone else just gets their own (plus any grants). So "is
+  // there anyone else's request in here at all" is exactly "is a team/org
+  // view worth showing" -- no separate role list to keep in sync with the
+  // backend's own scoping logic. Forced on for admin/hr/manager even when
+  // currently empty so the panel (and "nobody's out right now") is always
+  // discoverable rather than only appearing once someone happens to have a
+  // request in flight.
+  const teamRequests = state.leaveRequests.filter((r) => r.user_id !== state.user.id);
+  const showTeamPanel = teamRequests.length > 0 || ["admin", "hr", "manager"].includes(state.user.role);
+  const orgWideView = ["admin", "hr"].includes(state.user.role);
 
   const root = document.getElementById("view-root");
   root.innerHTML = `
@@ -5611,6 +5624,13 @@ function renderLeave() {
       <div class="panel">
         <h2>Pending your approval</h2>
         ${renderApprovalTable(pendingOnMe)}
+      </div>
+    ` : ""}
+
+    ${showTeamPanel ? `
+      <div class="panel">
+        <h2>${orgWideView ? "Everyone's leaves / WFH" : "Your team's leaves / WFH"}</h2>
+        ${renderTeamLeaveTable(teamRequests)}
       </div>
     ` : ""}
 
@@ -5663,6 +5683,33 @@ function renderMyLeaveTable(rows) {
       <tbody>
         ${rows.slice().reverse().map((r) => `
           <tr>
+            <td>${byId(state.leaveTypes, r.leave_type_id)?.name || ""}</td>
+            <td>${r.start_date} → ${r.end_date}</td>
+            <td>${r.days}</td>
+            <td><span class="pill pill-${r.status}">${r.status.replace("_", " ")}</span></td>
+            <td>${r.current_approver_id ? userName(r.current_approver_id) : "—"}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+// The team/org overview -- everyone else's leave & WFH requests this user's
+// role can see (see the showTeamPanel comment in renderLeave() for how that
+// set is scoped). Read-only: a row that's actually awaiting this user's own
+// decision still shows up here too, alongside its Approve/Reject buttons in
+// "Pending your approval" above -- this panel is the full picture (past,
+// pending-elsewhere, and pending-on-me alike), that one's just the inbox.
+function renderTeamLeaveTable(rows) {
+  if (!rows.length) return `<div class="empty-state">No one else has a leave or WFH request on record right now.</div>`;
+  return `
+    <table>
+      <thead><tr><th>Employee</th><th>Type</th><th>Dates</th><th>Days</th><th>Status</th><th>Waiting on</th></tr></thead>
+      <tbody>
+        ${rows.slice().sort((a, b) => (a.start_date < b.start_date ? 1 : -1)).map((r) => `
+          <tr>
+            <td>${userName(r.user_id)}</td>
             <td>${byId(state.leaveTypes, r.leave_type_id)?.name || ""}</td>
             <td>${r.start_date} → ${r.end_date}</td>
             <td>${r.days}</td>
