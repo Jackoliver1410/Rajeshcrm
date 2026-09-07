@@ -5588,11 +5588,21 @@ function openAccountDetailModal(account) {
 
 // ---------- Leave ----------
 
+// Row-selection state for the team/org leave table's select-all + bulk
+// delete, same module-level Set pattern as leadsSelected.
+let teamLeaveSelected = new Set();
+
 function renderLeave() {
   document.getElementById("topbar-actions").innerHTML = `<button class="btn btn-primary" id="request-leave-btn">+ Request Leave</button>`;
   document.getElementById("request-leave-btn").addEventListener("click", openLeaveRequestModal);
 
   const canApprove = ["manager", "hr", "admin"].includes(state.user.role);
+  // Same admin/hr/manager gate as who gets the team/org panel at all -- a
+  // Sub-Admin with rows in view only via an explicit data grant can still
+  // manage those individual rows server-side (userCanManageLeaveRequest),
+  // it just doesn't get the select-all/bulk UI, matching the Leads
+  // select-all precedent (backend allows sub_admin, UI trigger doesn't).
+  const canManageTeamLeave = ["admin", "hr", "manager"].includes(state.user.role);
   const myRequests = state.leaveRequests.filter((r) => r.user_id === state.user.id);
   const pendingOnMe = state.leaveRequests.filter((r) => r.current_approver_id === state.user.id);
   // GET /api/leave-requests already scopes what lands in state.leaveRequests
@@ -5608,6 +5618,12 @@ function renderLeave() {
   const teamRequests = state.leaveRequests.filter((r) => r.user_id !== state.user.id);
   const showTeamPanel = teamRequests.length > 0 || ["admin", "hr", "manager"].includes(state.user.role);
   const orgWideView = ["admin", "hr"].includes(state.user.role);
+
+  // Drop selected ids that fell out of view (deleted elsewhere, or a
+  // decision moved them out of scope) so "N selected" stays accurate --
+  // same cleanup Leads does for leadsSelected.
+  const validTeamIds = new Set(teamRequests.map((r) => r.id));
+  Array.from(teamLeaveSelected).forEach((id) => { if (!validTeamIds.has(id)) teamLeaveSelected.delete(id); });
 
   const root = document.getElementById("view-root");
   root.innerHTML = `
@@ -5630,7 +5646,14 @@ function renderLeave() {
     ${showTeamPanel ? `
       <div class="panel">
         <h2>${orgWideView ? "Everyone's leaves / WFH" : "Your team's leaves / WFH"}</h2>
-        ${renderTeamLeaveTable(teamRequests)}
+        ${canManageTeamLeave && teamLeaveSelected.size ? `
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+            <span style="font-size:13px;font-weight:600">${teamLeaveSelected.size} selected</span>
+            <button type="button" class="btn btn-small" id="team-leave-bulk-clear-btn">Clear selection</button>
+            <button type="button" class="btn btn-small btn-danger" id="team-leave-bulk-delete-btn" title="Delete selected" aria-label="Delete selected" style="margin-left:auto">🗑 Delete selected</button>
+          </div>
+        ` : ""}
+        ${renderTeamLeaveTable(teamRequests, { canManage: canManageTeamLeave, selected: teamLeaveSelected })}
       </div>
     ` : ""}
 
@@ -5646,6 +5669,73 @@ function renderLeave() {
     });
     root.querySelectorAll("[data-reject]").forEach((btn) => {
       btn.addEventListener("click", () => decideLeave(btn.dataset.reject, "reject"));
+    });
+  }
+
+  if (canManageTeamLeave) {
+    const teamSelectAllEl = document.getElementById("team-leave-select-all");
+    if (teamSelectAllEl) {
+      teamSelectAllEl.addEventListener("change", (e) => {
+        if (e.target.checked) teamRequests.forEach((r) => teamLeaveSelected.add(r.id));
+        else teamRequests.forEach((r) => teamLeaveSelected.delete(r.id));
+        renderLeave();
+      });
+    }
+    root.querySelectorAll("[data-team-leave-select]").forEach((cb) => {
+      cb.addEventListener("change", (e) => {
+        const id = Number(cb.dataset.teamLeaveSelect);
+        if (e.target.checked) teamLeaveSelected.add(id);
+        else teamLeaveSelected.delete(id);
+        renderLeave();
+      });
+    });
+    const teamBulkClearBtn = document.getElementById("team-leave-bulk-clear-btn");
+    if (teamBulkClearBtn) {
+      teamBulkClearBtn.addEventListener("click", () => {
+        teamLeaveSelected.clear();
+        renderLeave();
+      });
+    }
+    const teamBulkDeleteBtn = document.getElementById("team-leave-bulk-delete-btn");
+    if (teamBulkDeleteBtn) {
+      teamBulkDeleteBtn.addEventListener("click", () => {
+        const ids = Array.from(teamLeaveSelected);
+        openPasswordConfirmModal({
+          title: `Delete ${ids.length} leave request${ids.length === 1 ? "" : "s"}?`,
+          hint: "This can't be undone.",
+          confirmLabel: "Delete requests",
+          onConfirm: async (password) => {
+            const results = await runWithConcurrency(ids, 5, (id) => api(`/api/leave-requests/${id}`, { method: "DELETE", body: { password } }));
+            const succeededIds = ids.filter((_, i) => results[i].status === "fulfilled");
+            const failed = ids
+              .map((id, i) => ({ id, result: results[i] }))
+              .filter((r) => r.result.status === "rejected");
+            if (succeededIds.length) {
+              state.leaveRequests = state.leaveRequests.filter((r) => !succeededIds.includes(r.id));
+              succeededIds.forEach((id) => teamLeaveSelected.delete(id));
+            }
+            if (succeededIds.length === 0 && failed.length) {
+              // Every delete failed -- most commonly a wrong password. Throw
+              // so openPasswordConfirmModal's own error handling shows it
+              // and leaves the modal open to try again.
+              throw new Error(failed[0].result.reason.message);
+            }
+            closeModal();
+            if (failed.length) {
+              toast(`Deleted ${succeededIds.length}, ${failed.length} failed: ${failed[0].result.reason.message}`, "error");
+            } else {
+              toast(`Deleted ${succeededIds.length} request${succeededIds.length === 1 ? "" : "s"}`);
+            }
+            renderLeave();
+          },
+        });
+      });
+    }
+    root.querySelectorAll("[data-team-leave-edit]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const row = state.leaveRequests.find((r) => r.id === Number(btn.dataset.teamLeaveEdit));
+        if (row) openEditLeaveRequestModal(row);
+      });
     });
   }
 }
@@ -5701,25 +5791,88 @@ function renderMyLeaveTable(rows) {
 // decision still shows up here too, alongside its Approve/Reject buttons in
 // "Pending your approval" above -- this panel is the full picture (past,
 // pending-elsewhere, and pending-on-me alike), that one's just the inbox.
-function renderTeamLeaveTable(rows) {
+function renderTeamLeaveTable(rows, opts = {}) {
   if (!rows.length) return `<div class="empty-state">No one else has a leave or WFH request on record right now.</div>`;
+  const { canManage, selected } = opts;
+  const sorted = rows.slice().sort((a, b) => (a.start_date < b.start_date ? 1 : -1));
+  const allSelected = canManage && sorted.length > 0 && sorted.every((r) => selected.has(r.id));
   return `
     <table>
-      <thead><tr><th>Employee</th><th>Type</th><th>Dates</th><th>Days</th><th>Status</th><th>Waiting on</th></tr></thead>
+      <thead><tr>
+        ${canManage ? `<th style="width:34px"><input type="checkbox" id="team-leave-select-all" ${allSelected ? "checked" : ""} /></th>` : ""}
+        <th>Employee</th><th>Type</th><th>Dates</th><th>Days</th><th>Status</th><th>Waiting on</th>
+        ${canManage ? `<th></th>` : ""}
+      </tr></thead>
       <tbody>
-        ${rows.slice().sort((a, b) => (a.start_date < b.start_date ? 1 : -1)).map((r) => `
+        ${sorted.map((r) => `
           <tr>
+            ${canManage ? `<td><input type="checkbox" data-team-leave-select="${r.id}" ${selected.has(r.id) ? "checked" : ""} /></td>` : ""}
             <td>${userName(r.user_id)}</td>
             <td>${byId(state.leaveTypes, r.leave_type_id)?.name || ""}</td>
             <td>${r.start_date} → ${r.end_date}</td>
             <td>${r.days}</td>
             <td><span class="pill pill-${r.status}">${r.status.replace("_", " ")}</span></td>
             <td>${r.current_approver_id ? userName(r.current_approver_id) : "—"}</td>
+            ${canManage ? `<td><button type="button" class="btn btn-small" data-team-leave-edit="${r.id}">Edit</button></td>` : ""}
           </tr>
         `).join("")}
       </tbody>
     </table>
   `;
+}
+
+// Edit modal for a leave/WFH request, opened from the team/org panel's Edit
+// button (Admin/HR org-wide, Manager for their own team -- see
+// userCanManageLeaveRequest server-side). Lets a manager/admin correct a
+// typo'd date or day count, or hand-adjust status, without going through
+// the approve/reject chain. No password re-entry -- that's reserved for the
+// delete path, since an edit isn't destructive the same way.
+function openEditLeaveRequestModal(row) {
+  openModal(`
+    <h2>Edit leave request — ${userName(row.user_id)}</h2>
+    <form id="edit-leave-form">
+      <label>Leave type</label>
+      <select name="leave_type_id">${state.leaveTypes.map((t) => `<option value="${t.id}" ${t.id === row.leave_type_id ? "selected" : ""}>${t.name}</option>`).join("")}</select>
+      <label>Start date</label><input name="start_date" id="edit-leave-start-date" type="date" value="${row.start_date}" required />
+      <label>End date</label><input name="end_date" id="edit-leave-end-date" type="date" value="${row.end_date}" required />
+      <label>Days</label><input name="days" id="edit-leave-days" type="number" min="0.5" step="0.5" value="${row.days}" required />
+      <label>Reason</label><textarea name="reason">${row.reason || ""}</textarea>
+      <label>Status</label>
+      <select name="status">
+        ${["pending_manager", "pending_hr", "approved", "rejected"].map((s) => `<option value="${s}" ${s === row.status ? "selected" : ""}>${s.replace("_", " ")}</option>`).join("")}
+      </select>
+      <div class="error-text" id="edit-leave-error"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save changes</button>
+      </div>
+    </form>
+  `);
+
+  const startEl = document.getElementById("edit-leave-start-date");
+  const endEl = document.getElementById("edit-leave-end-date");
+  const daysEl = document.getElementById("edit-leave-days");
+  const recalcDays = () => {
+    if (!startEl.value || !endEl.value) return;
+    const count = countBusinessDays(startEl.value, endEl.value, state.holidays);
+    if (count >= 0.5) daysEl.value = count;
+  };
+  startEl.addEventListener("change", recalcDays);
+  endEl.addEventListener("change", recalcDays);
+
+  document.getElementById("edit-leave-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+      const updated = await api(`/api/leave-requests/${row.id}`, { method: "PATCH", body: Object.fromEntries(fd) });
+      state.leaveRequests = state.leaveRequests.map((r) => (r.id === row.id ? updated : r));
+      toast("Leave request updated");
+      closeModal();
+      renderLeave();
+    } catch (err) {
+      document.getElementById("edit-leave-error").textContent = err.message;
+    }
+  });
 }
 
 async function decideLeave(id, action) {
