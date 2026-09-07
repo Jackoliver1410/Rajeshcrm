@@ -6890,10 +6890,9 @@ function managerOptionsHtml(users, excludeId, selectedId) {
 
 function openNewUserModal() {
   const users = state.users;
-  let pwVisible = true;
   openModal(`
     <h2>New user</h2>
-    <div style="color:var(--text-dim);font-size:13px;margin-bottom:12px">Sets a login they can use right away — share the password with them yourself once it's created.</div>
+    <div style="color:var(--text-dim);font-size:13px;margin-bottom:12px">They'll get an email with a link to set up their own password — sign-in works as soon as they do.</div>
     <label>Name</label>
     <input type="text" id="nu-name" placeholder="Full name" />
     <label style="margin-top:10px">Email</label>
@@ -6908,17 +6907,29 @@ function openNewUserModal() {
     </select>
     <label style="margin-top:10px">Reports to</label>
     <select id="nu-manager">${managerOptionsHtml(users, null, null)}</select>
-    <label style="margin-top:10px">Password</label>
-    <div style="display:flex;gap:8px">
-      <input type="text" id="nu-password" placeholder="At least 6 characters" style="flex:1" value="${generatePassword()}" />
-      <button type="button" class="btn" id="nu-generate-btn">Generate</button>
+    <label style="margin-top:14px;display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer">
+      <input type="checkbox" id="nu-manual-password-toggle" />
+      Set a password myself instead of emailing an invite
+    </label>
+    <div id="nu-password-block" style="display:none;margin-top:8px">
+      <label>Password</label>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="nu-password" placeholder="At least 6 characters" style="flex:1" value="${generatePassword()}" />
+        <button type="button" class="btn" id="nu-generate-btn">Generate</button>
+      </div>
+      <div class="hint">Shown in plain text so you can copy it and share it with them yourself.</div>
     </div>
-    <div class="hint">Shown in plain text so you can copy it — this app has no email-invite flow yet.</div>
     <div class="modal-actions">
       <button type="button" class="btn" onclick="closeModal()">Cancel</button>
       <button type="button" class="btn btn-primary" id="nu-save-btn">Create user</button>
     </div>
   `);
+
+  const manualToggleEl = document.getElementById("nu-manual-password-toggle");
+  const passwordBlockEl = document.getElementById("nu-password-block");
+  manualToggleEl.addEventListener("change", (e) => {
+    passwordBlockEl.style.display = e.target.checked ? "block" : "none";
+  });
 
   document.getElementById("nu-generate-btn").addEventListener("click", () => {
     document.getElementById("nu-password").value = generatePassword();
@@ -6931,16 +6942,35 @@ function openNewUserModal() {
     const phone = document.getElementById("nu-phone").value.trim();
     const role = document.getElementById("nu-role").value;
     const manager_id = document.getElementById("nu-manager").value || null;
-    const password = document.getElementById("nu-password").value;
-    if (!name || !email || !password) {
-      toast("Name, email, and password are required", "error");
+    const setManually = manualToggleEl.checked;
+    const password = setManually ? document.getElementById("nu-password").value : "";
+    if (!name || !email) {
+      toast("Name and email are required", "error");
+      return;
+    }
+    if (setManually && (!password || password.length < 6)) {
+      toast("Password must be at least 6 characters", "error");
       return;
     }
     const btn = document.getElementById("nu-save-btn");
     btn.disabled = true;
     try {
-      await api("/api/users", { method: "POST", body: { name, email, title, phone, role, manager_id, password } });
-      toast(`User created — password: ${password}`);
+      const created = await api("/api/users", { method: "POST", body: { name, email, title, phone, role, manager_id, password } });
+      if (setManually) {
+        toast(`User created — password: ${password}`);
+      } else {
+        const mail = created?.email_notification;
+        if (mail && mail.sent) {
+          toast("User created — they'll get an email to set up their password");
+        } else {
+          // Invite email didn't go out (SMTP not configured, mailbox
+          // rejected it, etc.) -- surface that clearly rather than letting
+          // the admin believe an email is on its way when it isn't. They can
+          // still fall back to "Reset password" in the Users list to hand
+          // the new person a password directly.
+          toast(`User created, but the invite email didn't send (${mail?.reason || "unknown error"}) — use "Reset password" below to set one yourself`, "error");
+        }
+      }
       closeModal();
       renderUsersSettings();
     } catch (err) {
