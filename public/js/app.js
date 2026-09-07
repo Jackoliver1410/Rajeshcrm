@@ -2500,12 +2500,26 @@ function renderContacts() {
       const id = Number(sel.dataset.draftModeSelect);
       const c = byId(state.contacts, id);
       const val = e.target.value;
-      // Picking Auto or Manual just opens the matching modal -- nothing is
-      // saved until the modal's own Save button, so the select isn't a
-      // persisted toggle by itself (no re-render needed here; the DOM
-      // already shows what was picked).
-      if (val === "auto") { openAutoDraftModal(c); return; }
-      if (val === "manual") { openManualDraftModal(c); return; }
+      // Picking Auto or Manual here only records which kind of draft this
+      // contact will get -- it no longer opens a modal or fires an AI
+      // generation call by itself. Writing/generating the actual email is
+      // the Draft column's job: click its "+ Add" pill (which already
+      // reads draft_mode to open the right modal -- see the
+      // [data-draft-open] handler below), and that's the one place a
+      // draft actually gets created.
+      if (val === "auto" || val === "manual") {
+        sel.disabled = true;
+        try {
+          const updated = await api(`/api/contacts/${id}`, { method: "PUT", body: { draft_mode: val } });
+          const idx = state.contacts.findIndex((x) => x.id === id);
+          if (idx !== -1) state.contacts[idx] = updated;
+          toast(`Draft type set to ${val === "auto" ? "Auto" : "Manual"} — click the Draft column to write it`);
+        } catch (err) {
+          toast(err.message, "error");
+        }
+        renderContacts();
+        return;
+      }
       if (!c.draft_mode) return; // was already blank, nothing to clear
       if (!confirm("Clear the saved draft for this contact?")) { renderContacts(); return; }
       try {

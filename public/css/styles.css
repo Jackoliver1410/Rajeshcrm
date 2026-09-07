@@ -657,12 +657,35 @@ td {
   word-break: break-word;
 }
 
-/* Status/Draft Type dropdowns (the base select rule below has a fixed
-   10px/12px padding) also shrink or grow with density, so switching
-   density actually changes row height end to end rather than just the
-   empty space around a full-size control. Scoped to select only -- a
-   checkbox or date input picking up the same padding would look broken. */
-td select { padding: var(--table-cell-padding-y) 10px; font-size: var(--table-font-size); }
+/* Any <select> living in a table cell, on ANY table -- Contacts'
+   Status/Draft Type, Assign Users' Role/Reports-to, Field Permissions'
+   Manager/User tiers, and any future one. Every table here becomes
+   table-layout:fixed once makeTableResizable() runs (see below), which
+   locks each column to a fixed pixel width -- but a plain <select> still
+   has the base input/select/textarea rule's width:100% AND its own
+   browser-native "shrink to fit the longest option" sizing floor, so
+   once a row's selected option (or a manual column resize) needed more
+   room than that fixed column width, the select rendered wider than its
+   cell and visually sat on top of the next column ("overlapping"). This
+   pins the select to its cell exactly (min-width:0 overrides the native
+   sizing floor) and ellipsizes instead of overflowing, so it can never
+   be wider than its own column no matter the option text or how far a
+   column gets resized down. Also carries the density-driven padding/font
+   size so switching density changes row height end to end rather than
+   just the empty space around a full-size control. Scoped to select only
+   -- a checkbox or date input picking up the same rules would look
+   broken. */
+td select {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: var(--table-cell-padding-y) 10px;
+  font-size: var(--table-font-size);
+}
 tr:last-child td { border-bottom: none; }
 
 /* Manual per-column/per-row resize -- every table gets a thin drag handle
@@ -868,21 +891,13 @@ table.resizable-table td:last-child { position: relative; }
 .email-icon-active:hover { background: rgba(30, 58, 232, 0.2); }
 .email-icon-empty { color: var(--text-dim); background: var(--panel-2); opacity: 0.6; cursor: default; }
 
-/* Status/Draft Type dropdowns: a fixed box, not width:auto. width:auto let
-   each select grow or shrink with whichever option text was currently
-   selected ("Fresh" vs "5th Followup"), so neighboring columns visibly
-   shifted/overlapped ("mixed together") depending on which row you looked
-   at. A fixed width plus ellipsis keeps every row's box the same size
-   regardless of its content -- long option text truncates instead of
-   pushing the layout around. */
-.contacts-table select[data-status-select],
-.contacts-table select[data-draft-mode-select] {
-  width: 128px;
-  max-width: 128px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+/* Status/Draft Type used to force a min-width here (to keep "5th Followup"
+   from clipping to nothing) or a fixed px width -- both fights with manual
+   column resize: shrink either column below that number and the select
+   overflows past the column edge into its neighbor again ("mixing"). The
+   shared `td select` rule above now handles sizing (100% of whatever the
+   column actually is, ellipsis if that's too narrow) for every table, so
+   nothing column-specific is needed here any more. */
 
 /* LinkedIn column: a small "in" glyph instead of a raw URL field -- brand
    blue and clickable when a URL is on file, muted and inert when not. */
