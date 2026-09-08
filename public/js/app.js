@@ -4418,6 +4418,17 @@ let apolloListSelected = new Set();
 // silently capping out at one page with no indication more rows exist.
 let apolloListPage = 1;
 let apolloListTotal = 0;
+// The full, unfiltered set of lists returned for this modal's lifetime --
+// the search box below filters this into whatever <option>s the select
+// actually shows, without a re-fetch (Apollo's list-of-lists call already
+// returned everything at once; only the LIST CONTENTS themselves are
+// paginated).
+let apolloListsAll = [];
+
+function apolloListOptionsHtml(lists) {
+  if (!lists.length) return `<option value="">No lists match your search</option>`;
+  return lists.map((l) => `<option value="${l.id}">${escapeAttr(l.name)} (${l.count})</option>`).join("");
+}
 
 function openApolloListImportModal(kind) {
   const isAccounts = kind === "accounts";
@@ -4435,6 +4446,7 @@ function openApolloListImportModal(kind) {
   apolloListSelected = new Set();
   apolloListPage = 1;
   apolloListTotal = 0;
+  apolloListsAll = [];
 
   api(`/api/prospecting/apollo-lists?modality=${isAccounts ? "accounts" : "contacts"}`)
     .then((data) => {
@@ -4444,16 +4456,32 @@ function openApolloListImportModal(kind) {
         picker.innerHTML = `<div class="hint" style="margin-top:0">No Apollo lists found for ${isAccounts ? "companies" : "contacts"}. Build one in Apollo.io first, or use CSV import instead.</div>`;
         return;
       }
+      apolloListsAll = data.lists;
       picker.innerHTML = `
         <label>Choose a list</label>
+        <input type="text" id="apollo-list-search" placeholder="Search lists by name…" autocomplete="off" style="margin-bottom:8px" />
         <div style="display:flex;gap:8px;align-items:center">
           <select id="apollo-list-select" style="flex:1">
-            ${data.lists.map((l) => `<option value="${l.id}">${escapeAttr(l.name)} (${l.count})</option>`).join("")}
+            ${apolloListOptionsHtml(apolloListsAll)}
           </select>
           <button type="button" class="btn btn-primary" id="apollo-list-load-btn">Load</button>
         </div>
       `;
       document.getElementById("apollo-list-load-btn").addEventListener("click", () => loadApolloListContents(kind));
+      // Filters the <option>s live as you type -- no re-fetch, just
+      // narrows the already-loaded apolloListsAll down to name matches.
+      // The currently-selected list stays selected if it still matches;
+      // otherwise selection falls back to the first (or only) match.
+      document.getElementById("apollo-list-search").addEventListener("input", (e) => {
+        const q = e.target.value.trim().toLowerCase();
+        const filtered = q ? apolloListsAll.filter((l) => l.name.toLowerCase().includes(q)) : apolloListsAll;
+        const selectEl = document.getElementById("apollo-list-select");
+        const loadBtn = document.getElementById("apollo-list-load-btn");
+        const prevValue = selectEl.value;
+        selectEl.innerHTML = apolloListOptionsHtml(filtered);
+        if (filtered.some((l) => String(l.id) === prevValue)) selectEl.value = prevValue;
+        loadBtn.disabled = filtered.length === 0;
+      });
     })
     .catch((err) => {
       const picker = document.getElementById("apollo-list-picker");
