@@ -779,29 +779,54 @@ table.resizable-table td:last-child { position: relative; }
 
 /* Contacts table -- same light brand-blue header band as Activity Report,
    plus a subtle row hover, so the table reads as themed rather than the
-   plain default table styling above. Header stays sticky (relative to
-   whichever ancestor actually scrolls -- the bounded box below in "Fit
-   window" view, or the page itself in the default "Full list" view) in
-   both display modes, so this isn't gated behind the modifier class. */
-.contacts-table thead th { background: rgba(30, 58, 232, 0.05); color: var(--ink); position: sticky; top: 0; z-index: 2; }
+   plain default table styling above. */
+/* The header tint (background-image, a flat rgba wash) is layered over a
+   solid background-color rather than used as a plain translucent
+   background -- a sticky header needs to fully hide whatever row has
+   scrolled underneath it, and a 5%-alpha rgba on its own lets that row's
+   text show straight through. */
+.contacts-table thead th { background-image: linear-gradient(rgba(30, 58, 232, 0.05), rgba(30, 58, 232, 0.05)); background-color: var(--panel); color: var(--ink); position: sticky; top: 0; z-index: 2; }
 .contacts-table tbody tr:hover td { background: var(--panel-2); }
 .contacts-table thead .sticky-col1 { z-index: 4; }
 
-/* Default is natural height: the table just grows with its row count and
-   the page scrolls, same as every other list in the app. "Fit window"
-   (the toggle next to Import/Quick Add) opts back into the old behavior --
-   bounding the table's own scroll region to the viewport instead of letting
-   it grow as tall as the row count, so its horizontal scrollbar (the
-   "toggle slider" for panning across the wide row/column-resized table)
-   can't end up far below the fold on a long list, only reachable by
-   scrolling the whole page down first. Useful for a long contact list;
-   unnecessary -- and, per user feedback, actively confusing -- for a short
-   one, where it left dead space on the page below a box that still needed
-   its own inner scroll for the last row or two. */
+/* Accounts table -- same sticky-header treatment as Contacts above. */
+.accounts-table thead th { background-image: linear-gradient(rgba(30, 58, 232, 0.05), rgba(30, 58, 232, 0.05)); background-color: var(--panel); color: var(--ink); position: sticky; top: 0; z-index: 2; }
+.accounts-table tbody tr:hover td { background: var(--panel-2); }
+
+/* Why every list here (Contacts, Accounts) needs an actual bounded,
+   internally-scrolling box, not just "grow with the row count and let the
+   page scroll": `.table-scroll`'s overflow-x:auto (needed so a wide,
+   column-resized table pans sideways in its own tidy scrollbar instead of
+   the whole page) forces its overflow-y to compute as non-`visible` too,
+   per the CSS overflow spec's "if one axis is non-visible, `visible` on
+   the other becomes `auto`" rule -- and ANY non-`visible` value (auto,
+   clip, hidden, scroll -- tried them all) makes that box a genuine "scroll
+   container" *by spec definition*, regardless of whether it can actually
+   be scrolled. A `position:sticky` header always sticks against its
+   NEAREST such ancestor, so `.table-scroll` wins over the real page/
+   window scroll every time -- and since `.table-scroll` was never given a
+   height, it never itself needs to scroll, so sticking to it is a no-op:
+   the header just scrolls away with the rows instead of freezing
+   ("overlapping" the row that ends up underneath it). There's no way
+   around this while overflow-x:auto lives on the same box a sticky header
+   needs to stick within -- confirmed empirically, not just reasoned about
+   -- so both tables now always get their own bounded, scrollable region
+   (like Contacts' old opt-in "Fit window" mode did), which is also
+   exactly the sticky-header pattern this same overflow-x:auto trick
+   already works correctly for real. Generous enough to fill most of a
+   normal screen below the topbar/filter row; caps out rather than
+   growing the whole page for a very long list. */
+.contacts-table, .accounts-table {
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+}
+
+/* "Fit window" (the toggle next to Import/Quick Add on Contacts) opts
+   into a shorter box -- useful when something else on the page (a scope
+   banner, bulk-action bar) needs room above it too. */
 .contacts-table.contacts-table--bounded {
   max-height: calc(100vh - 340px);
   min-height: 220px;
-  overflow-y: auto;
 }
 
 /* Compact filter bar (search/status/account/owner row above the table) --

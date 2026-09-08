@@ -2269,7 +2269,7 @@ function renderContacts() {
     <button class="btn btn-compact" id="import-contacts-btn">Import</button>
     <button class="btn btn-compact" id="quick-add-btn">✨ Quick Add</button>
     <button class="btn btn-primary btn-compact" id="new-contact-btn">+ New Contact</button>
-    <button type="button" class="btn btn-compact" id="contacts-table-mode-btn" title="${tableMode === "fit" ? "Switch to Full list — table grows with the page instead of scrolling in its own box" : "Switch to Fit window — bounds the table to a scrollable box so its scrollbar never leaves the screen"}">${tableMode === "fit" ? "⬍ Full list" : "⛶ Fit window"}</button>
+    <button type="button" class="btn btn-compact" id="contacts-table-mode-btn" title="${tableMode === "fit" ? "Switch to Full list — a taller scrollable box, showing more rows at once" : "Switch to Fit window — a shorter scrollable box, leaving more room above it"}">${tableMode === "fit" ? "⬍ Full list" : "⛶ Fit window"}</button>
   `;
   document.getElementById("new-contact-btn").addEventListener("click", () => openContactFormModal());
   document.getElementById("apollo-search-contacts-btn").addEventListener("click", () => openApolloSearchModal("people"));
@@ -3682,6 +3682,7 @@ function renderAccountsListView() {
       </div>
     ` : ""}
     <div class="panel">
+      <div class="table-scroll accounts-table">
       <table>
         <thead><tr>
           <th style="width:34px"><input type="checkbox" id="accounts-select-all" ${allSelected ? "checked" : ""} /></th>
@@ -3708,6 +3709,7 @@ function renderAccountsListView() {
           `).join("") || `<tr><td colspan="8" class="empty-state">${filtersActive || accountsScopeFilter ? "No accounts match these filters." : "No accounts yet."}</td></tr>`}
         </tbody>
       </table>
+      </div>
     </div>
   `;
 
