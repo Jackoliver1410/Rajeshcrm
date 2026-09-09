@@ -534,23 +534,24 @@ body[data-sidebar="collapsed"] .sidebar-expand-btn { display: flex; }
   margin-bottom: 24px;
 }
 
-/* The Dashboard's top row of 6 glance cards -- kept to a single row on any
-   reasonably wide screen instead of auto-fit's usual wrap, so the 6th card
-   (Total Contacts) doesn't fall to a lonely second row. Narrower widths
-   still degrade gracefully via the media queries below rather than
-   squeezing 6 columns into a phone-sized viewport. */
-.stat-grid-6 {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+/* The Dashboard's top row of 5 glance cards (Total Companies, Total
+   Contacts, Leads Achieved, Leaves/WFH, Approve/Pending) -- kept to a
+   single row on any reasonably wide screen instead of auto-fit's usual
+   wrap, so the last card doesn't fall to a lonely second row. Narrower
+   widths still degrade gracefully via the media queries below rather than
+   squeezing 5 columns into a phone-sized viewport. */
+.stat-grid-5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
 }
-.stat-grid-6 .stat-card { padding: 14px; }
-.stat-grid-6 .stat-card .label { font-size: 11px; }
-.stat-grid-6 .stat-card .value { font-size: 22px; }
+.stat-grid-5 .stat-card { padding: 14px; }
+.stat-grid-5 .stat-card .label { font-size: 11px; }
+.stat-grid-5 .stat-card .value { font-size: 22px; }
 @media (max-width: 1100px) {
-  .stat-grid-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .stat-grid-5 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 620px) {
-  .stat-grid-6 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat-grid-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 .stat-card {

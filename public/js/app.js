@@ -985,7 +985,7 @@ async function renderDashboard() {
   }
 
   root.innerHTML = `
-    <div class="stat-grid stat-grid-6">
+    <div class="stat-grid stat-grid-5">
       <div class="stat-card clickable" id="total-companies-card" title="View these companies">
         <div class="stat-card-icon icon-teal">${DASH_ICONS.building}</div>
         <div class="label">Total Companies</div>
@@ -1004,20 +1004,12 @@ async function renderDashboard() {
           <div><div class="value accent-amber" style="font-size:22px;line-height:1.3">${stats.leads_achieved_year}</div><div style="font-size:11px;color:var(--text-dim);margin-top:2px">${yearLabel}</div></div>
         </div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card clickable" id="leave-wfh-card" title="Click for the month-by-month breakdown and full year totals">
         <div class="stat-card-icon icon-violet">${DASH_ICONS.calendar}</div>
-        <div class="label">Leaves</div>
+        <div class="label">Leaves / WFH</div>
         <div style="display:flex;gap:20px;margin-top:4px">
-          <div><div class="value" style="font-size:22px;line-height:1.3">${stats.my_leave.leave.month_days}</div><div style="font-size:11px;color:var(--text-dim);margin-top:2px">${monthLabel}</div></div>
-          <div><div class="value" style="font-size:22px;line-height:1.3">${stats.my_leave.leave.year_days}</div><div style="font-size:11px;color:var(--text-dim);margin-top:2px">${yearLabel}</div></div>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-card-icon icon-violet">${DASH_ICONS.calendar}</div>
-        <div class="label">WFH</div>
-        <div style="display:flex;gap:20px;margin-top:4px">
-          <div><div class="value" style="font-size:22px;line-height:1.3">${stats.my_leave.wfh.month_days}</div><div style="font-size:11px;color:var(--text-dim);margin-top:2px">${monthLabel}</div></div>
-          <div><div class="value" style="font-size:22px;line-height:1.3">${stats.my_leave.wfh.year_days}</div><div style="font-size:11px;color:var(--text-dim);margin-top:2px">${yearLabel}</div></div>
+          <div><div class="value" style="font-size:22px;line-height:1.3">${stats.my_leave.leave.month_days}</div><div style="font-size:11px;color:var(--text-dim);margin-top:2px">Leaves &middot; ${monthLabel}</div></div>
+          <div><div class="value" style="font-size:22px;line-height:1.3">${stats.my_leave.wfh.month_days}</div><div style="font-size:11px;color:var(--text-dim);margin-top:2px">WFH &middot; ${monthLabel}</div></div>
         </div>
       </div>
       <div class="stat-card clickable" id="leave-pending-card" title="${isApprover ? "Go approve these requests" : "View your pending requests"}">
@@ -1089,6 +1081,10 @@ async function renderDashboard() {
     switchView("contacts");
   });
 
+  document.getElementById("leave-wfh-card").addEventListener("click", () => {
+    openLeaveWfhBreakdownModal(stats.my_leave, monthLabel, yearLabel);
+  });
+
   document.getElementById("leave-pending-card").addEventListener("click", () => {
     // The Leave/WFH page already puts "Pending your approval" as the first
     // panel for approvers (and "My requests" for everyone else right below
@@ -1111,6 +1107,45 @@ async function renderDashboard() {
   // Reuse the stats already fetched above for the top cards instead of
   // firing a second identical request just to populate the Activity panel.
   renderActivityStatsInto(stats);
+}
+
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// Opened by clicking the Dashboard's merged "Leaves / WFH" card -- the
+// card itself only has room for this month's two numbers, so the fuller
+// picture (every month this year, plus the year total already shown
+// elsewhere) lives here instead. `myLeave` is stats.my_leave straight off
+// GET /api/dashboard/stats -- { leave: {month_days, year_days, by_month},
+// wfh: {...} }, always the signed-in user's own, never whatever scope an
+// admin has the rest of the Dashboard set to.
+function openLeaveWfhBreakdownModal(myLeave, monthLabel, yearLabel) {
+  const currentMonthIdx = new Date().getMonth();
+  openModal(`
+    <h2>Leaves / WFH</h2>
+    <div class="hint" style="margin-bottom:14px">Your own days used, month by month for ${escapeAttr(yearLabel)}.</div>
+    <div style="display:flex;gap:20px;margin-bottom:18px">
+      <div><div class="value" style="font-size:26px">${myLeave.leave.month_days}</div><div style="font-size:12px;color:var(--text-dim)">Leave days &middot; ${escapeAttr(monthLabel)}</div></div>
+      <div><div class="value" style="font-size:26px">${myLeave.wfh.month_days}</div><div style="font-size:12px;color:var(--text-dim)">WFH days &middot; ${escapeAttr(monthLabel)}</div></div>
+      <div><div class="value" style="font-size:26px">${myLeave.leave.year_days}</div><div style="font-size:12px;color:var(--text-dim)">Leave days &middot; ${escapeAttr(yearLabel)}</div></div>
+      <div><div class="value" style="font-size:26px">${myLeave.wfh.year_days}</div><div style="font-size:12px;color:var(--text-dim)">WFH days &middot; ${escapeAttr(yearLabel)}</div></div>
+    </div>
+    <table style="width:100%;font-size:13px">
+      <tr style="color:var(--text-dim);text-align:left"><th style="padding:5px 0">Month</th><th>Leave</th><th>WFH</th></tr>
+      ${MONTH_NAMES.map((name, i) => `
+        <tr ${i === currentMonthIdx ? `style="font-weight:600"` : ""}>
+          <td style="padding:5px 0">${name}${i === currentMonthIdx ? " (this month)" : ""}</td>
+          <td>${myLeave.leave.by_month?.[i] ?? 0}</td>
+          <td>${myLeave.wfh.by_month?.[i] ?? 0}</td>
+        </tr>
+      `).join("")}
+      <tr style="font-weight:700;border-top:1px solid var(--border)">
+        <td style="padding:5px 0">Total</td>
+        <td>${myLeave.leave.year_days}</td>
+        <td>${myLeave.wfh.year_days}</td>
+      </tr>
+    </table>
+    <div class="modal-actions"><button type="button" class="btn" onclick="closeModal()">Close</button></div>
+  `);
 }
 
 async function loadActivityStats(userId) {
@@ -6174,6 +6209,79 @@ function openAccountDetailModal(account) {
 // delete, same module-level Set pattern as leadsSelected.
 let teamLeaveSelected = new Set();
 
+// Admin/HR's "Everyone's leaves / WFH" filters -- module-level so they
+// survive the re-render every filter change triggers, same pattern as
+// contactsFilters. `preset` drives which date range applies: "all" (no
+// date filtering), "week"/"month"/"year" (computed fresh on every render
+// so it's always relative to right now), or "custom" (the two date
+// inputs below it).
+let teamLeaveReportFilters = { userId: "", preset: "all", startDate: "", endDate: "" };
+
+function isoDate(d) { return d.toISOString().slice(0, 10); }
+
+// Mirrors isWfhType() server-side (lib/app.js) -- a leave type counts as
+// WFH if an admin explicitly flagged it, else by name-matching the seeded
+// "Work From Home" type. Used client-side only to split a set of requests
+// into "leave days" vs "WFH days" for the report summary line below.
+function isWfhLeaveType(typeId) {
+  const t = byId(state.leaveTypes, typeId);
+  if (!t) return false;
+  if (typeof t.is_wfh === "boolean") return t.is_wfh;
+  return /work from home|\bwfh\b/i.test(t.name || "");
+}
+
+// Calendar week (Monday-Sunday, matching how the rest of the app already
+// buckets by month/year), this calendar month, and this calendar year --
+// each as a plain {start, end} "YYYY-MM-DD" pair for filtering requests
+// by date-range overlap. Computed in the browser's local time since this
+// is only ever a quick client-side filter, never persisted or compared
+// against another timezone.
+function currentWeekRange() {
+  const now = new Date();
+  const sinceMonday = (now.getDay() + 6) % 7;
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - sinceMonday);
+  const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
+  return { start: isoDate(monday), end: isoDate(sunday) };
+}
+function currentMonthRange() {
+  const now = new Date();
+  return {
+    start: isoDate(new Date(now.getFullYear(), now.getMonth(), 1)),
+    end: isoDate(new Date(now.getFullYear(), now.getMonth() + 1, 0)),
+  };
+}
+function currentYearRange() {
+  const now = new Date();
+  return { start: `${now.getFullYear()}-01-01`, end: `${now.getFullYear()}-12-31` };
+}
+
+// {start, end} for whatever preset is currently selected, or null for
+// "all" (no date filtering) / an incomplete "custom" range.
+function teamLeaveReportRange() {
+  const f = teamLeaveReportFilters;
+  if (f.preset === "week") return currentWeekRange();
+  if (f.preset === "month") return currentMonthRange();
+  if (f.preset === "year") return currentYearRange();
+  if (f.preset === "custom") return (f.startDate && f.endDate) ? { start: f.startDate, end: f.endDate } : null;
+  return null;
+}
+
+// Employee + date-range overlap filtering for the admin/HR report --
+// applied on top of whatever `rows` the caller already scoped (see
+// teamRequests in renderLeave()). A request matches a date range if it
+// overlaps at all (starts before the range ends AND ends after the range
+// starts), not just if it starts inside it, so a multi-day request that
+// only partially falls in the selected week/month/year still shows up.
+function applyTeamLeaveReportFilters(rows) {
+  const f = teamLeaveReportFilters;
+  const range = teamLeaveReportRange();
+  return rows.filter((r) => {
+    if (f.userId && String(r.user_id) !== f.userId) return false;
+    if (range && !(r.start_date <= range.end && r.end_date >= range.start)) return false;
+    return true;
+  });
+}
+
 // ---------- Admin "today's leave/WFH" ticker ----------
 // A small centralized readout, Admin-only, that lives in the Leaves/WFH
 // page's topbar (the #view-title-extra slot between the page title and the
@@ -6284,11 +6392,15 @@ function renderLeave() {
   const teamRequests = state.leaveRequests.filter((r) => r.user_id !== state.user.id);
   const showTeamPanel = teamRequests.length > 0 || ["admin", "hr", "manager"].includes(state.user.role);
   const orgWideView = ["admin", "hr"].includes(state.user.role);
+  // Admin/HR only -- date/employee filters over the full org's requests
+  // (see teamLeaveReportFilters above). A manager's narrower "Your team's
+  // leaves/WFH" stays the plain unfiltered list it always was.
+  const filteredTeamRequests = orgWideView ? applyTeamLeaveReportFilters(teamRequests) : teamRequests;
 
-  // Drop selected ids that fell out of view (deleted elsewhere, or a
-  // decision moved them out of scope) so "N selected" stays accurate --
-  // same cleanup Leads does for leadsSelected.
-  const validTeamIds = new Set(teamRequests.map((r) => r.id));
+  // Drop selected ids that fell out of view (deleted elsewhere, a decision
+  // moved them out of scope, or a filter now hides them) so "N selected"
+  // stays accurate -- same cleanup Leads does for leadsSelected.
+  const validTeamIds = new Set(filteredTeamRequests.map((r) => r.id));
   Array.from(teamLeaveSelected).forEach((id) => { if (!validTeamIds.has(id)) teamLeaveSelected.delete(id); });
 
   const root = document.getElementById("view-root");
@@ -6312,6 +6424,7 @@ function renderLeave() {
     ${showTeamPanel ? `
       <div class="panel">
         <h2>${orgWideView ? "Everyone's leaves / WFH" : "Your team's leaves / WFH"}</h2>
+        ${orgWideView ? renderTeamLeaveReportFiltersHtml(filteredTeamRequests) : ""}
         ${canManageTeamLeave && teamLeaveSelected.size ? `
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
             <span style="font-size:13px;font-weight:600">${teamLeaveSelected.size} selected</span>
@@ -6319,7 +6432,7 @@ function renderLeave() {
             <button type="button" class="btn btn-small btn-danger" id="team-leave-bulk-delete-btn" title="Delete selected" aria-label="Delete selected" style="margin-left:auto">🗑 Delete selected</button>
           </div>
         ` : ""}
-        ${renderTeamLeaveTable(teamRequests, { canManage: canManageTeamLeave, selected: teamLeaveSelected })}
+        ${renderTeamLeaveTable(filteredTeamRequests, { canManage: canManageTeamLeave, selected: teamLeaveSelected })}
       </div>
     ` : ""}
 
@@ -6405,6 +6518,26 @@ function renderLeave() {
     });
   }
 
+  if (orgWideView) {
+    const userFilterEl = document.getElementById("team-leave-filter-user");
+    if (userFilterEl) {
+      userFilterEl.addEventListener("change", (e) => {
+        teamLeaveReportFilters.userId = e.target.value;
+        renderLeave();
+      });
+    }
+    root.querySelectorAll("[data-leave-report-preset]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        teamLeaveReportFilters.preset = btn.dataset.leaveReportPreset;
+        renderLeave();
+      });
+    });
+    const startEl = document.getElementById("team-leave-filter-start");
+    const endEl = document.getElementById("team-leave-filter-end");
+    if (startEl) startEl.addEventListener("change", (e) => { teamLeaveReportFilters.startDate = e.target.value; renderLeave(); });
+    if (endEl) endEl.addEventListener("change", (e) => { teamLeaveReportFilters.endDate = e.target.value; renderLeave(); });
+  }
+
   // "My requests" delete -- withdrawing your own not-yet-approved request
   // (pending, or already rejected). No password re-entry here, unlike the
   // team-management delete above: you're only ever touching your own
@@ -6470,6 +6603,47 @@ function renderMyLeaveTable(rows) {
         `).join("")}
       </tbody>
     </table>
+  `;
+}
+
+const TEAM_LEAVE_REPORT_PRESETS = [
+  ["all", "All time"],
+  ["week", "This week"],
+  ["month", "This month"],
+  ["year", "This year"],
+  ["custom", "Custom range"],
+];
+
+// Admin/HR's filter bar above "Everyone's leaves / WFH": which employee
+// (or everyone) and which date range (a rolling preset, or a custom pair
+// of dates) -- see teamLeaveReportFilters/applyTeamLeaveReportFilters
+// above for how these actually narrow the list. `totalRows` is the
+// already-filtered set, purely to show a quick "N requests, X leave days,
+// Y WFH days" summary under the controls -- a lightweight stand-in for a
+// full per-employee breakdown, without building a separate report view.
+function renderTeamLeaveReportFiltersHtml(filteredRows) {
+  const f = teamLeaveReportFilters;
+  const otherUsers = state.users.filter((u) => u.id !== state.user.id).slice().sort((a, b) => a.name.localeCompare(b.name));
+  const leaveDays = filteredRows.reduce((s, r) => s + (isWfhLeaveType(r.leave_type_id) ? 0 : (r.days || 0)), 0);
+  const wfhDays = filteredRows.reduce((s, r) => s + (isWfhLeaveType(r.leave_type_id) ? (r.days || 0) : 0), 0);
+  return `
+    <div class="leave-report-filters" style="margin-bottom:12px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <select id="team-leave-filter-user" style="min-width:160px">
+          <option value="">All employees</option>
+          ${otherUsers.map((u) => `<option value="${u.id}" ${f.userId === String(u.id) ? "selected" : ""}>${escapeAttr(u.name)}</option>`).join("")}
+        </select>
+        ${TEAM_LEAVE_REPORT_PRESETS.map(([id, label]) => `
+          <button type="button" class="btn btn-small" data-leave-report-preset="${id}" style="${f.preset === id ? "background:var(--ink);color:#fff;border-color:var(--ink)" : ""}">${label}</button>
+        `).join("")}
+        ${f.preset === "custom" ? `
+          <input type="date" id="team-leave-filter-start" value="${f.startDate}" />
+          <span style="color:var(--text-dim);font-size:13px">to</span>
+          <input type="date" id="team-leave-filter-end" value="${f.endDate}" />
+        ` : ""}
+      </div>
+      <div class="hint" style="margin-top:8px">${filteredRows.length} request${filteredRows.length === 1 ? "" : "s"} &middot; ${leaveDays} leave day${leaveDays === 1 ? "" : "s"} &middot; ${wfhDays} WFH day${wfhDays === 1 ? "" : "s"}</div>
+    </div>
   `;
 }
 
