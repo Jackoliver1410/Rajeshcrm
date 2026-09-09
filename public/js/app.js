@@ -6404,6 +6404,27 @@ function renderLeave() {
       });
     });
   }
+
+  // "My requests" delete -- withdrawing your own not-yet-approved request
+  // (pending, or already rejected). No password re-entry here, unlike the
+  // team-management delete above: you're only ever touching your own
+  // record, and never one that's already consumed leave balance.
+  root.querySelectorAll("[data-my-leave-delete]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = Number(btn.dataset.myLeaveDelete);
+      if (!confirm("Delete this leave request? This can't be undone.")) return;
+      btn.disabled = true;
+      try {
+        await api(`/api/leave-requests/${id}`, { method: "DELETE" });
+        state.leaveRequests = state.leaveRequests.filter((r) => r.id !== id);
+        toast("Leave request deleted");
+        renderLeave();
+      } catch (err) {
+        toast(err.message, "error");
+        btn.disabled = false;
+      }
+    });
+  });
 }
 
 function renderApprovalTable(rows) {
@@ -6435,7 +6456,7 @@ function renderMyLeaveTable(rows) {
   if (!rows.length) return `<div class="empty-state">No leave requests yet.</div>`;
   return `
     <table>
-      <thead><tr><th>Type</th><th>Dates</th><th>Days</th><th>Status</th><th>Waiting on</th></tr></thead>
+      <thead><tr><th>Type</th><th>Dates</th><th>Days</th><th>Status</th><th>Waiting on</th><th></th></tr></thead>
       <tbody>
         ${rows.slice().reverse().map((r) => `
           <tr>
@@ -6444,6 +6465,7 @@ function renderMyLeaveTable(rows) {
             <td>${r.days}</td>
             <td><span class="pill pill-${r.status}">${r.status.replace("_", " ")}</span></td>
             <td>${r.current_approver_id ? userName(r.current_approver_id) : "—"}</td>
+            <td>${r.status !== "approved" ? `<button type="button" class="btn btn-small btn-danger" data-my-leave-delete="${r.id}" title="Delete this request" aria-label="Delete this request">🗑</button>` : ""}</td>
           </tr>
         `).join("")}
       </tbody>
