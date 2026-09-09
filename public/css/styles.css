@@ -657,6 +657,19 @@ td {
   word-break: break-word;
 }
 
+/* Companion to the overflow-wrap/word-break rule above. makeTableResizable()
+   in app.js briefly toggles this class on a table while it measures each
+   column's natural width, so that measurement isn't taken with every word
+   treated as breakable at any character -- which used to let a free-text
+   column (e.g. Contacts' "Title") get its width frozen at 20-30px. See the
+   comment in makeTableResizable() for the full story. */
+.measuring-natural-width td,
+.measuring-natural-width th {
+  white-space: nowrap !important;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+}
+
 /* Any <select> living in a table cell, on ANY table -- Contacts'
    Status/Draft Type, Assign Users' Role/Reports-to, Field Permissions'
    Manager/User tiers, and any future one. Every table here becomes
