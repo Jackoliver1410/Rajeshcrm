@@ -3047,20 +3047,29 @@ function mailBody(firstName) {
 // Azure/Graph setup needed at all): mailto: hands off to whatever desktop
 // mail client is installed, and the OWA link opens a compose window in
 // Outlook on the web. Both work immediately, with zero backend setup.
-function buildMailLinks(email, bodyText) {
+function buildMailLinks(email, bodyText, subject) {
   const bodyQS = encodeURIComponent(bodyText);
+  const subjectQS = subject ? `&subject=${encodeURIComponent(subject)}` : "";
   return {
-    mailto: `mailto:${encodeURIComponent(email)}?body=${bodyQS}`,
-    owa: `https://outlook.office.com/mail/deeplink/compose?to=${encodeURIComponent(email)}&body=${bodyQS}`,
+    mailto: `mailto:${encodeURIComponent(email)}?body=${bodyQS}${subject ? `&subject=${encodeURIComponent(subject)}` : ""}`,
+    owa: `https://outlook.office.com/mail/deeplink/compose?to=${encodeURIComponent(email)}&body=${bodyQS}${subjectQS}`,
   };
 }
 
 function openContactDetailModal(c) {
   const email = c.email || "";
-  const initialBody = mailBody(c.first_name);
+  // Prefills from whatever's saved for this contact's CURRENT stage in the
+  // Draft panel (Contact detail page > Emails tab, or the Contacts table's
+  // Draft column) -- composing here is how that draft actually gets sent,
+  // so it opens with that text already in place instead of a blank
+  // greeting, and falls back to the plain greeting only when nothing's
+  // been drafted for this stage yet.
+  const stageDraft = stageDraftFor(c, c.status || "Fresh");
+  const initialSubject = stageDraft.subject || "";
+  const initialBody = stageDraft.body || mailBody(c.first_name);
   const company = accountName(c.account_id) !== "—" ? accountName(c.account_id) : "";
   const connections = state.outlookConnections || [];
-  const classicLinks = email ? buildMailLinks(email, initialBody) : null;
+  const classicLinks = email ? buildMailLinks(email, initialBody, initialSubject) : null;
 
   openModal(`
     <h2>${c.first_name} ${c.last_name}</h2>
@@ -3088,9 +3097,9 @@ function openContactDetailModal(c) {
         ${connections.map((cn) => `<option value="${cn.id}">${escapeAttr(cn.email)}${cn.display_name ? ` — ${escapeAttr(cn.display_name)}` : ""}</option>`).join("")}
       </select>
       <label style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:4px">Subject</label>
-      <input id="contact-email-subject" style="width:100%;margin-bottom:10px;box-sizing:border-box" placeholder="Following up" />
+      <input id="contact-email-subject" value="${escapeAttr(initialSubject)}" style="width:100%;margin-bottom:10px;box-sizing:border-box" placeholder="Following up" />
       <label style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:4px">Message</label>
-      <textarea id="contact-email-body" class="draft-font" rows="5" style="width:100%;margin-bottom:8px;box-sizing:border-box">${initialBody}</textarea>
+      <textarea id="contact-email-body" class="draft-font" rows="5" style="width:100%;margin-bottom:8px;box-sizing:border-box">${escapeAttr(initialBody)}</textarea>
       <div class="error-text" id="contact-email-error"></div>
       <div style="display:flex;gap:10px;margin-bottom:8px">
         <button type="button" class="btn" id="ai-draft-toggle" style="flex:1">✨ Draft with AI</button>
@@ -3180,7 +3189,7 @@ function openContactDetailModal(c) {
           toast("Draft applied below — review and hit Send");
         } else {
           // Classic mode (mailto: / Outlook Web links)
-          const newLinks = buildMailLinks(email, bodyText);
+          const newLinks = buildMailLinks(email, bodyText, initialSubject);
           document.getElementById("mailto-link").href = newLinks.mailto;
           document.getElementById("owa-link").href = newLinks.owa;
           toast("Draft applied — click Email above to open it");
@@ -3482,6 +3491,7 @@ function contactDetailTimelineHtml(c) {
 function contactDetailEmailsHtml(c) {
   const emails = (contactDetailEmails || []).slice().sort((a, b) => new Date(b.sent_at) - new Date(a.sent_at));
   return `
+    ${contactDetailDraftPanelHtml(c)}
     <div class="panel">
       <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
         <button type="button" class="btn btn-primary btn-small" id="contact-detail-compose-btn" ${c.email ? "" : `disabled title="No email on file for this contact"`}>Compose Email</button>
@@ -3499,6 +3509,43 @@ function contactDetailEmailsHtml(c) {
           `).join("")}
         </table>
       ` : `<div class="empty-state">No emails sent yet.</div>`}
+    </div>
+  `;
+}
+
+// The Contacts table's per-stage Draft column, brought inline here so it
+// lives right next to Compose Email instead of only being reachable via
+// that table's own pill/modal -- whatever's saved here (Fresh, or
+// whichever Follow-up this contact's Status is currently on) is exactly
+// what Compose Email above prefills with (see openContactDetailModal),
+// so drafting and sending are the same draft, not two disconnected copies.
+function contactDetailDraftPanelHtml(c) {
+  const stage = c.status || "Fresh";
+  const stageIsAutoable = AUTO_DRAFT_STAGES.has(stage);
+  const current = stageDraftFor(c, stage);
+  const mode = c.draft_mode || "";
+  return `
+    <div class="panel" style="margin-bottom:16px">
+      <div class="contact-detail-card-title">Draft &mdash; ${escapeAttr(stage)}</div>
+      ${stageIsAutoable ? `
+        <div class="hint" style="margin:2px 0 10px">Saving here is what Compose Email below starts from. Switch Status above to draft a different stage.</div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+          <label style="font-size:12px;color:var(--text-dim)">Draft type</label>
+          <select id="contact-detail-draft-mode">
+            <option value="" ${!mode ? "selected" : ""}>— (none)</option>
+            <option value="auto" ${mode === "auto" ? "selected" : ""}>Auto (AI-generated)</option>
+            <option value="manual" ${mode === "manual" ? "selected" : ""}>Manual</option>
+          </select>
+          ${mode === "auto" ? `<button type="button" class="btn btn-small" id="contact-detail-draft-regenerate-btn" style="margin-left:auto">✨ ${current.body ? "Regenerate" : "Generate"}</button>` : ""}
+        </div>
+        <label style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:4px">Subject</label>
+        <input id="contact-detail-draft-subject" value="${escapeAttr(current.subject)}" placeholder="Subject line" style="width:100%;box-sizing:border-box;margin-bottom:10px" />
+        <label style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:4px">Body</label>
+        <textarea id="contact-detail-draft-body" class="draft-font" rows="6" style="width:100%;box-sizing:border-box" placeholder="Write it yourself, or set Draft type to Auto and generate one…">${escapeAttr(current.body)}</textarea>
+        <div style="display:flex;justify-content:flex-end;margin-top:8px">
+          <button type="button" class="btn btn-primary btn-small" id="contact-detail-draft-save-btn">Save Draft</button>
+        </div>
+      ` : `<div class="hint" style="color:var(--coral);margin:2px 0 0">Drafts only apply to the Fresh/Follow-up statuses — set Status above to one of those first.</div>`}
     </div>
   `;
 }
@@ -3640,6 +3687,102 @@ function wireContactDetailTabBody(c) {
     const composeBtn = document.getElementById("contact-detail-compose-btn");
     if (composeBtn && !composeBtn.disabled) {
       composeBtn.addEventListener("click", () => openContactDetailModal(c));
+    }
+    wireContactDetailDraftPanel(c);
+  }
+}
+
+// Wiring for contactDetailDraftPanelHtml() above -- Draft type select
+// (Auto/Manual), the Auto-mode Generate/Regenerate button, and Save Draft,
+// all scoped to whichever stage this contact's Status is currently on
+// (same stage-indexed draft_text/draft_subject vs. followups[n]/
+// followup_subjects[n] targeting as the Contacts table's own auto-draft
+// modal -- see wireSequenceSave()).
+function wireContactDetailDraftPanel(c) {
+  const stage = c.status || "Fresh";
+  if (!AUTO_DRAFT_STAGES.has(stage)) return;
+
+  const modeSel = document.getElementById("contact-detail-draft-mode");
+  if (modeSel) {
+    modeSel.addEventListener("change", async () => {
+      modeSel.disabled = true;
+      try {
+        const updated = await api(`/api/contacts/${c.id}`, { method: "PUT", body: { draft_mode: modeSel.value || null } });
+        const idx = state.contacts.findIndex((x) => x.id === c.id);
+        if (idx !== -1) state.contacts[idx] = updated;
+        // First time this contact is switched to Auto with nothing
+        // generated yet for this stage: fire the generation right away
+        // instead of waiting for a separate click, same as the Contacts
+        // table's own auto-draft modal does.
+        if (modeSel.value === "auto" && !stageDraftFor(updated, stage).body) {
+          await runContactDetailDraftGenerate(updated, stage);
+        } else {
+          renderContactDetailPage({});
+        }
+      } catch (err) {
+        toast(err.message, "error");
+        modeSel.disabled = false;
+      }
+    });
+  }
+
+  const regenBtn = document.getElementById("contact-detail-draft-regenerate-btn");
+  if (regenBtn) regenBtn.addEventListener("click", () => runContactDetailDraftGenerate(c, stage));
+
+  const saveBtn = document.getElementById("contact-detail-draft-save-btn");
+  if (saveBtn) {
+    saveBtn.addEventListener("click", async () => {
+      const subject = document.getElementById("contact-detail-draft-subject").value;
+      const body = document.getElementById("contact-detail-draft-body").value;
+      const stageIndex = AUTO_DRAFT_STAGE_ORDER.indexOf(stage);
+      const patch = {};
+      if (stageIndex <= 0) {
+        patch.draft_text = body;
+        patch.draft_subject = subject;
+      } else {
+        const idx = stageIndex - 1;
+        const followups = Array.isArray(c.followups) ? [...c.followups] : ["", "", "", "", ""];
+        const subjects = Array.isArray(c.followup_subjects) ? [...c.followup_subjects] : ["", "", "", "", ""];
+        followups[idx] = body;
+        subjects[idx] = subject;
+        patch.followups = followups;
+        patch.followup_subjects = subjects;
+      }
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Saving…";
+      try {
+        const updated = await api(`/api/contacts/${c.id}`, { method: "PUT", body: patch });
+        const idx2 = state.contacts.findIndex((x) => x.id === c.id);
+        if (idx2 !== -1) state.contacts[idx2] = updated;
+        toast("Draft saved");
+        renderContactDetailPage({});
+      } catch (err) {
+        toast(err.message, "error");
+        saveBtn.disabled = false;
+        saveBtn.textContent = "Save Draft";
+      }
+    });
+  }
+}
+
+async function runContactDetailDraftGenerate(c, stage) {
+  const regenBtn = document.getElementById("contact-detail-draft-regenerate-btn");
+  const originalLabel = regenBtn ? regenBtn.textContent : "";
+  if (regenBtn) {
+    regenBtn.disabled = true;
+    regenBtn.textContent = "Generating…";
+  }
+  try {
+    const { contact: updated, stage: gotStage } = await api("/api/ai/draft-stage", { method: "POST", body: { contact_id: c.id } });
+    const idx = state.contacts.findIndex((x) => x.id === c.id);
+    if (idx !== -1) state.contacts[idx] = updated;
+    toast(`Draft generated for ${gotStage}`);
+    renderContactDetailPage({});
+  } catch (err) {
+    toast(err.message, "error");
+    if (regenBtn) {
+      regenBtn.disabled = false;
+      regenBtn.textContent = originalLabel;
     }
   }
 }
