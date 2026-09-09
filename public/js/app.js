@@ -2966,14 +2966,53 @@ function openAutoDraftModal(c) {
   if (!hasExisting && stageIsAutoable) runGenerate();
 }
 
+// Fills {{first_name}}/{{last_name}}/{{company}}/{{title}}/{{sender_name}}
+// in a template string with this specific contact's data -- client-side
+// mirror of renderMerge()/mergeContextForContact() in lib/app.js (used
+// when a sequence step or template actually sends), so picking a template
+// into the Manual draft modal shows real values immediately instead of
+// leaving literal "{{first_name}}" placeholders for the rep to hand-edit.
+function renderMergeFieldsForContact(str, c) {
+  if (!str) return "";
+  const map = {
+    first_name: c.first_name || "",
+    last_name: c.last_name || "",
+    company: accountName(c.account_id) !== "—" ? accountName(c.account_id) : "",
+    title: c.title || "",
+    sender_name: state.user?.name || "",
+  };
+  return str.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => (key in map ? map[key] : ""));
+}
+
 // Manual mode: the rep just writes/pastes their own draft -- no AI call, no
 // follow-up sequence (a manual draft is a single message the rep owns).
-function openManualDraftModal(c) {
+// Also offers the same Templates list as Emailing > Templates, so a rep
+// isn't stuck choosing between "write it from scratch" and "use a saved
+// template" -- picking one here just prefills Subject/Draft (merge fields
+// resolved for this contact), which stays fully editable before Save.
+async function openManualDraftModal(c) {
   const existingSubject = c.draft_mode === "manual" ? (c.draft_subject || "") : "";
   const existing = c.draft_mode === "manual" ? (c.draft_text || "") : "";
+  // Templates are only loaded once the rep has visited Emailing > Templates
+  // this session -- fetch fresh here too so the picker isn't empty for
+  // someone who came straight to Contacts.
+  if (!emailingTemplates.length) {
+    try { emailingTemplates = await api("/api/emailing/templates"); } catch { /* picker just stays empty; Cancel/write-from-scratch still works */ }
+  }
   openModal(`
     <h2>Write draft — ${c.first_name} ${c.last_name}</h2>
-    <label>Subject</label>
+    ${emailingTemplates.length ? `
+      <label>Use a template</label>
+      <div style="display:flex;gap:8px">
+        <select id="manual-draft-template-select" style="flex:1">
+          <option value="">— Write from scratch —</option>
+          ${emailingTemplates.map((t) => `<option value="${t.id}">${escapeAttr(t.name)}</option>`).join("")}
+        </select>
+        <button type="button" class="btn btn-small" id="manual-draft-template-insert-btn">Insert</button>
+      </div>
+      <div class="hint" style="margin-top:4px">Manage these under Emailing → Templates. Inserting fills Subject/Draft below with this contact's name/title/company already merged in — still fully editable before you save.</div>
+    ` : ""}
+    <label style="margin-top:10px">Subject</label>
     <input id="manual-draft-subject" value="${escapeAttr(existingSubject)}" placeholder="Subject line" />
     <label style="margin-top:10px">Draft</label>
     <textarea id="manual-draft-text" class="draft-font" rows="8" placeholder="Paste or write your outreach draft…">${existing}</textarea>
@@ -2982,6 +3021,17 @@ function openManualDraftModal(c) {
       <button type="button" class="btn btn-primary" id="manual-draft-save-btn">Save draft</button>
     </div>
   `);
+  const templateInsertBtn = document.getElementById("manual-draft-template-insert-btn");
+  if (templateInsertBtn) {
+    templateInsertBtn.addEventListener("click", () => {
+      const select = document.getElementById("manual-draft-template-select");
+      const tpl = byId(emailingTemplates, Number(select.value));
+      if (!tpl) { toast("Pick a template first", "error"); return; }
+      document.getElementById("manual-draft-subject").value = renderMergeFieldsForContact(tpl.subject, c);
+      document.getElementById("manual-draft-text").value = renderMergeFieldsForContact(tpl.body, c);
+      toast(`Inserted "${tpl.name}"`);
+    });
+  }
   document.getElementById("manual-draft-save-btn").addEventListener("click", async () => {
     const btn = document.getElementById("manual-draft-save-btn");
     const draft_subject = document.getElementById("manual-draft-subject").value;
@@ -9275,11 +9325,11 @@ async function renderEmailing() {
   root.innerHTML = `
     <div class="panel">
       <div class="settings-tabs" style="margin-bottom:16px">
-        <div class="settings-tab ${emailingTab === "sequencing" ? "active" : ""}" data-emailing-tab="sequencing">Sequencing</div>
         <div class="settings-tab ${emailingTab === "emails" ? "active" : ""}" data-emailing-tab="emails">Emails</div>
         <div class="settings-tab ${emailingTab === "replies" ? "active" : ""}" data-emailing-tab="replies">Replies</div>
         <div class="settings-tab ${emailingTab === "templates" ? "active" : ""}" data-emailing-tab="templates">Templates</div>
         <div class="settings-tab ${emailingTab === "lists" ? "active" : ""}" data-emailing-tab="lists">Lists</div>
+        <div class="settings-tab ${emailingTab === "sequencing" ? "active" : ""}" data-emailing-tab="sequencing">Sequencing</div>
       </div>
       <div id="emailing-body"></div>
     </div>
