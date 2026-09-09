@@ -45,6 +45,12 @@
 #    external images or fonts -- the salesforce.com/outlook.office.com/
 #    linkedin.com strings in app.js are only plain <a> link targets, which
 #    CSP's fetch directives don't restrict.
+#  - frame-src explicitly allows accelq.lightning.force.com: the Accounts >
+#    Salesforce tab embeds that org directly in an <iframe> (see
+#    SALESFORCE_ORG_URL in app.js) as a stopgap before the OAuth Connected
+#    App sync is set up. Without this, frame-src falls back to default-src
+#    'self' and CSP itself would block that iframe (on top of whatever
+#    framing restrictions Salesforce's own response headers already apply).
 [[headers]]
   for = "/*"
   [headers.values]
@@ -52,4 +58,4 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "geolocation=(), camera=(), microphone=(), payment=(), usb=()"
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-src 'self' https://accelq.lightning.force.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
