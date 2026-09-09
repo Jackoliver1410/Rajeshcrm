@@ -8941,6 +8941,10 @@ function openApolloSearchModal(kind) {
 
 const SF_OBJECT_LABELS = { lead: "Lead", account: "Account", contact: "Contact" };
 const SF_OBJECT_PLURALS = { lead: "Leads", account: "Accounts", contact: "Contacts" };
+// Rajesh's live Salesforce org, used to embed/link to the real Salesforce
+// UI directly on this tab before the OAuth Connected App sync (above) is
+// set up. See the framing note where this is used in renderSalesforce().
+const SALESFORCE_ORG_URL = "https://accelq.lightning.force.com/lightning/page/home";
 
 let sfTab = "pull";
 let sfPullObject = "lead";
@@ -8974,13 +8978,26 @@ async function renderSalesforce() {
 
   if (!status.connected) {
     const isAdmin = state.user.role === "admin";
+    // Requested as a stopgap so the tab shows the real Salesforce org
+    // directly, before the OAuth Connected App sync above is set up.
+    // Heads up for future edits: Salesforce Lightning sends its own
+    // X-Frame-Options/CSP frame-ancestors headers and typically refuses to
+    // render inside a third-party iframe like this one -- if this shows
+    // blank, that's Salesforce's own framing protection, not a bug here.
+    // "Open in a new tab" is the reliable fallback either way.
     root.innerHTML = `
       ${accountsTabBarHtml()}
-      <div class="panel">
-        <div class="empty-state">
-          Salesforce isn't connected yet. ${isAdmin ? "Connect it in Settings → Integrations — you'll need a Connected App set up on the Salesforce side first." : "Ask an admin to connect it in Settings → Integrations."}
+      <div class="panel" style="padding:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+          <div class="hint" style="margin:0">
+            Showing ${escapeAttr(SALESFORCE_ORG_URL)} directly — Salesforce may refuse to display inside this frame due to its own security settings. ${isAdmin ? "For real two-way sync (pull/push Leads, Accounts, Contacts, Opportunities), connect it properly in Settings → Integrations." : "Ask an admin to connect it in Settings → Integrations for real two-way sync."}
+          </div>
+          <div style="display:flex;gap:8px;flex-shrink:0">
+            <a class="btn btn-small" href="${SALESFORCE_ORG_URL}" target="_blank" rel="noopener">Open in new tab ↗</a>
+            ${isAdmin ? `<button type="button" class="btn btn-small btn-primary" id="sf-goto-settings">Go to Settings</button>` : ""}
+          </div>
         </div>
-        ${isAdmin ? `<div class="modal-actions" style="justify-content:flex-start;margin-top:10px"><button class="btn btn-primary btn-small" id="sf-goto-settings">Go to Settings</button></div>` : ""}
+        <iframe src="${SALESFORCE_ORG_URL}" title="Salesforce" style="width:100%;height:80vh;border:1px solid var(--border);border-radius:8px"></iframe>
       </div>
     `;
     wireAccountsTabBar(root);
