@@ -320,7 +320,10 @@ function applyTheme(theme) {
 
 function tableResizeKey(table) {
   const headers = Array.from(table.querySelectorAll("thead th")).map((th) => th.textContent.trim()).join("|");
-  return `tbl-resize:${headers}`;
+  // v2: bumped so every browser re-measures column widths once under the
+  // fixed makeTableResizable() below, instead of reloading a width that
+  // was frozen (and saved) by the old bug -- see the comment there.
+  return `tbl-resize:v2:${headers}`;
 }
 
 function loadResizeState(key) {
@@ -348,13 +351,29 @@ function makeTableResizable(table) {
   // <colgroup> before switching to table-layout:fixed, so turning on
   // resizing doesn't itself reflow anything -- then apply any saved
   // widths from a previous visit on top.
+  //
+  // Bug this works around: td's overflow-wrap:anywhere/word-break:break-word
+  // (needed so a long, unbreakable token like an email address can't
+  // overflow a resized column) also lets the browser's automatic table
+  // layout treat every column's content as breakable at any character.
+  // That collapses a column's *minimum* content width down to a single
+  // character, so a free-text column like "Title" could get measured --
+  // and then permanently frozen by table-layout:fixed below -- at 20-30px,
+  // producing a wall of two-letter-per-line text. Measuring with
+  // white-space:nowrap forced on restores a sane per-column minimum (its
+  // longest whole word) before anything gets locked in.
+  table.classList.add("measuring-natural-width");
   const ths = Array.from(thead.rows[0].cells);
   const colgroup = document.createElement("colgroup");
   ths.forEach((th, i) => {
     const col = document.createElement("col");
-    col.style.width = `${Math.round(state.cols[i] || th.getBoundingClientRect().width)}px`;
+    // Math.max(40, ...) matches the floor setColWidth() already enforces
+    // on manual drags -- belt-and-suspenders in case a pre-fix width is
+    // still sitting in localStorage under an old (unversioned) key.
+    col.style.width = `${Math.max(40, Math.round(state.cols[i] || th.getBoundingClientRect().width))}px`;
     colgroup.appendChild(col);
   });
+  table.classList.remove("measuring-natural-width");
   table.insertBefore(colgroup, table.firstChild);
   table.style.tableLayout = "fixed";
   const cols = Array.from(colgroup.children);

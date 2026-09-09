@@ -5,7 +5,12 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "seed:reset": "node lib/seed.js --reset"
+    "seed:reset": "node lib/seed.js --reset",
+    "test": "playwright test",
+    "test:smoke": "playwright test tests/smoke.spec.js",
+    "test:functional": "playwright test tests/functional.spec.js",
+    "test:regression": "playwright test tests/regression.spec.js",
+    "test:report": "playwright show-report"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -18,5 +23,8 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.0"
   }
 }
