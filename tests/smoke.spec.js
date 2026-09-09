@@ -74,16 +74,15 @@ test.describe('smoke', () => {
     expect(response.headers()['strict-transport-security']).toBeTruthy();
   });
 
-  // Known gap as of the last security pass (2026-09-09): CSP, X-Frame-Options,
-  // X-Content-Type-Options, Referrer-Policy and Permissions-Policy are all
-  // missing. This is intentionally `fixme` (shows as an accepted failure,
-  // not a red build) so the suite documents the gap without blocking CI --
-  // flip each assertion on for real once that header gets added.
-  test.fixme('security headers: CSP / X-Frame-Options / X-Content-Type-Options / Referrer-Policy / Permissions-Policy', async ({ request, baseURL }) => {
+  // Added 2026-09-10 in netlify.toml, closing the gap the last security pass
+  // (2026-09-09) found -- all 5 headers were missing before this. See the
+  // comment above the `for = "/*"` headers block in netlify.toml for why the
+  // CSP allows 'unsafe-inline' (the app's onclick=/style= attributes need it).
+  test('security headers: CSP / X-Frame-Options / X-Content-Type-Options / Referrer-Policy / Permissions-Policy', async ({ request, baseURL }) => {
     const headers = (await request.get(baseURL)).headers();
-    expect(headers['content-security-policy']).toBeTruthy();
-    expect(headers['x-frame-options']).toBeTruthy();
-    expect(headers['x-content-type-options']).toBeTruthy();
+    expect(headers['content-security-policy']).toContain("default-src 'self'");
+    expect(headers['x-frame-options']).toBe('DENY');
+    expect(headers['x-content-type-options']).toBe('nosniff');
     expect(headers['referrer-policy']).toBeTruthy();
     expect(headers['permissions-policy']).toBeTruthy();
   });

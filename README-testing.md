@@ -105,8 +105,11 @@ landing in production and are prepared to clean them up.
   root cause, assertion that pins down the specific symptom.
 - New tab or major feature? Add it to the `tabs` array in
   `functional.spec.js`.
-- The security-header gaps from the last audit (CSP, X-Frame-Options,
-  X-Content-Type-Options, Referrer-Policy, Permissions-Policy — all
-  missing as of 2026-09-09) have `test.fixme()` placeholders in
-  `smoke.spec.js`. Once you add a header, delete its line from the
-  `fixme` block and it becomes a real enforced assertion.
+- The 5 security headers flagged missing in the 2026-09-09 audit (CSP,
+  X-Frame-Options, X-Content-Type-Options, Referrer-Policy,
+  Permissions-Policy) were added on 2026-09-10 via the `for = "/*"` block
+  in `netlify.toml`, and `smoke.spec.js` now asserts them for real (no
+  longer `test.fixme()`). The CSP allows `'unsafe-inline'` for scripts and
+  styles because the app's UI relies on inline `onclick=`/`style=`
+  attributes — see the comment above that block in `netlify.toml` before
+  tightening it further.

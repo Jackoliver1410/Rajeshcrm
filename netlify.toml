@@ -28,3 +28,28 @@
   for = "/index.html"
   [headers.values]
     Cache-Control = "no-cache, must-revalidate"
+
+# Security headers added 2026-09-10, closing the gap flagged in the security
+# pass on 2026-09-09 (was previously missing all five of these). Notes on the
+# CSP specifically, since it's the one that can silently break the app if
+# tightened carelessly:
+#  - script-src/style-src need 'unsafe-inline': the app renders its UI via
+#    innerHTML template strings full of onclick="..." handlers and inline
+#    style="..." attributes (no nonces/hashes) rather than addEventListener
+#    and classes. Dropping 'unsafe-inline' would silently break every button
+#    and most layout on the site. Refactoring that is a separate, larger
+#    change -- this CSP is real hardening (blocks loading any script/resource
+#    off an attacker-controlled domain) without breaking the app today.
+#  - connect-src/img-src/font-src are 'self' only: audited app.js and found
+#    no fetch()/XHR calls to any origin other than same-origin /api/*, and no
+#    external images or fonts -- the salesforce.com/outlook.office.com/
+#    linkedin.com strings in app.js are only plain <a> link targets, which
+#    CSP's fetch directives don't restrict.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "geolocation=(), camera=(), microphone=(), payment=(), usb=()"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
