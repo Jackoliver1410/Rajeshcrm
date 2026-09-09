@@ -2018,6 +2018,27 @@ const CONTACT_STATUSES = [
   "Bounced", "Cold", "Warm", "Prospect", "Negative", "LinkedIn",
 ];
 
+// Who this contact is within their org's buying committee, and which angle
+// we're pitching them -- both feed straight into the AI drafting context
+// (see contactIQContext() server-side) alongside the free-form Pitch text,
+// together replacing the old single free-text "IQ notes" box.
+const BUYING_COMMITTEE_PERSONAS = [
+  "Economic Buyer", "Technical Buyer", "Champion", "Influencer",
+  "End User", "Executive Sponsor", "Blocker",
+];
+const PITCH_TYPES = [
+  "Test Automation ROI", "Faster Release Cycles", "Reduce QA Costs",
+  "Risk & Compliance", "Digital Transformation", "Competitive Displacement",
+  "Expansion / Upsell",
+];
+
+// True once a contact has anything in the new structured Pitch & Persona
+// fields -- what the Contacts table's "IQ" column checkmark now reflects,
+// in place of the old plain iq_notes-only check.
+function hasPitchOrPersona(c) {
+  return Boolean(c.pitch || c.buying_committee_persona || c.pitch_type);
+}
+
 // Contacts table filters -- module-level like contactsSelected, so choices
 // survive the re-render every checkbox/status edit triggers. Flat bag keyed
 // by column id (colId+"From"/"To" for a dateRange column) -- see
@@ -2222,7 +2243,7 @@ function contactFilterDefs() {
     email: { label: "Email", kind: "text", getValue: (c) => c.email || "" },
     emailIcon: { label: "Send", kind: "boolean", getValue: (c) => Boolean(c.email) },
     linkedin: { label: "LinkedIn", kind: "boolean", getValue: (c) => Boolean(c.linkedin_url) },
-    iq: { label: "IQ", kind: "boolean", getValue: (c) => Boolean(c.iq_notes) },
+    iq: { label: "IQ", kind: "boolean", getValue: (c) => hasPitchOrPersona(c) },
     owner: { label: "Owner", kind: "select", getValue: (c) => String(c.owner_id || ""), getOptions: () => contactsOwnerFilterOptions().map((u) => ({ value: String(u.id), label: u.id === state.user.id ? "Just me" : u.name })) },
     status: { label: "Status", kind: "select", getValue: (c) => c.status || "Fresh", getOptions: () => CONTACT_STATUSES.map((s) => ({ value: s, label: s })) },
     draftType: { label: "Draft Type", kind: "select", getValue: (c) => c.draft_mode || "none", getOptions: () => ([{ value: "auto", label: "Auto" }, { value: "manual", label: "Manual" }, { value: "none", label: "— (none)" }]) },
@@ -2349,8 +2370,8 @@ function renderContacts() {
               ` : ""}
               ${cv("iq") ? `
                 <td onclick="event.stopPropagation()" style="text-align:center">
-                  <button type="button" class="draft-pill" data-iq-open="${c.id}" title="${c.iq_notes ? "Click to view/edit IQ notes" : "Click to add IQ notes"}">
-                    ${c.iq_notes ? "IQ ✓" : "+ Add"}
+                  <button type="button" class="draft-pill" data-iq-open="${c.id}" title="${hasPitchOrPersona(c) ? "Click to view/edit Pitch & Persona" : "Click to add Pitch & Persona"}">
+                    ${hasPitchOrPersona(c) ? "IQ ✓" : "+ Add"}
                   </button>
                 </td>
               ` : ""}
@@ -2403,7 +2424,7 @@ function renderContacts() {
   `;
 
   root.querySelectorAll("[data-contact]").forEach((tr) => {
-    tr.addEventListener("click", () => openContactDetailModal(byId(state.contacts, tr.dataset.contact)));
+    tr.addEventListener("click", () => openContactDetailPage(Number(tr.dataset.contact)));
   });
 
   // Owner is the one filterable field that can end up with nowhere to live
@@ -2556,8 +2577,7 @@ function renderContacts() {
   root.querySelectorAll("[data-iq-open]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
-      const id = Number(btn.dataset.iqOpen);
-      openContactIQModal(byId(state.contacts, id));
+      openContactDetailPage(Number(btn.dataset.iqOpen), { scrollToPitch: true });
     });
   });
 
@@ -2763,42 +2783,6 @@ function sendContactEmail(c) {
       renderContacts();
     })
     .catch(() => { /* non-critical -- the email app still opened either way */ });
-}
-
-// Per-contact free-text notes ("IQ") -- separate from the Fresh/Follow-up
-// Draft text and from Account-level research, this is what the rep knows
-// about THIS person specifically (their priorities, something said on a
-// call, a detail from their LinkedIn). Folded into the auto-draft prompt as
-// "contactIQ" context. The modal window itself is already drag-resizable
-// (see the shared modal chrome), so no extra sizing UI is needed here.
-function openContactIQModal(c) {
-  openModal(`
-    <h2>IQ notes — ${c.first_name} ${c.last_name}</h2>
-    <div class="hint" style="margin-bottom:10px">Free-form notes about this specific contact — used as context when auto-drafting their outreach emails. Drag the bottom-right corner to resize this window.</div>
-    <textarea id="contact-iq-text" rows="12" style="width:100%;box-sizing:border-box" placeholder="e.g. cares most about audit trail/compliance, mentioned they're evaluating 2 other vendors, prefers short emails…">${c.iq_notes || ""}</textarea>
-    <div class="modal-actions">
-      <button type="button" class="btn" onclick="closeModal()">Close</button>
-      <button type="button" class="btn btn-primary" id="contact-iq-save-btn">Save</button>
-    </div>
-  `, { wide: true });
-  document.getElementById("contact-iq-save-btn").addEventListener("click", async () => {
-    const btn = document.getElementById("contact-iq-save-btn");
-    const iq_notes = document.getElementById("contact-iq-text").value;
-    btn.disabled = true;
-    btn.textContent = "Saving…";
-    try {
-      const updated = await api(`/api/contacts/${c.id}`, { method: "PUT", body: { iq_notes } });
-      const idx = state.contacts.findIndex((x) => x.id === c.id);
-      if (idx !== -1) state.contacts[idx] = updated;
-      toast("IQ notes saved");
-      closeModal();
-      renderContacts();
-    } catch (err) {
-      toast(err.message, "error");
-      btn.disabled = false;
-      btn.textContent = "Save";
-    }
-  });
 }
 
 // Shown when a rep clicks a contact's empty Draft box -- lets them pick a
@@ -3208,6 +3192,421 @@ function openContactDetailModal(c) {
       btn.textContent = "Send";
     }
   });
+}
+
+// ---------- Contact detail page ----------
+// A full page (not a modal) reached by clicking a contact's name/row in the
+// Contacts table, or its IQ column button -- carries the same contact info
+// the old openContactDetailModal() showed (which stays around, reused here
+// for the actual email-compose step), plus the outreach-stage stepper, a
+// tabbed layout (Overview/Research/Signals/Notes/Timeline/Emails), and the
+// structured Pitch & Persona fields that now feed the AI drafting context
+// server-side (see contactIQContext() in lib/app.js) in place of the old
+// single free-text IQ notes box.
+let contactDetailId = null;
+let contactDetailTab = "overview";
+let contactDetailEmails = [];
+let contactDetailEmailsError = null;
+
+// Short stepper labels, index-parallel with AUTO_DRAFT_STAGE_ORDER (Fresh,
+// 1st..5th Followup) -- "F1".."F5" instead of the full "1st Followup" etc,
+// since the stepper needs to fit six of these across one row.
+const OUTREACH_STAGE_SHORT = ["Fresh", "F1", "F2", "F3", "F4", "F5"];
+
+// contactId is stored (not the contact object itself) so every render
+// always reads the latest copy out of state.contacts after a save.
+function openContactDetailPage(contactId, opts) {
+  contactDetailId = contactId;
+  contactDetailTab = "overview";
+  contactDetailEmails = [];
+  contactDetailEmailsError = null;
+  renderContactDetailPage(opts || {});
+  // Fetched after the first paint so opening the page never blocks on it --
+  // only affects the Emails/Timeline tab content and their tab-badge counts,
+  // which re-render once this resolves (guarded in case the rep already
+  // clicked through to a different contact, or back to the list, by then).
+  api("/api/emailing/emails")
+    .then((all) => { contactDetailEmails = all.filter((e) => e.contact_id === contactId); })
+    .catch((err) => { contactDetailEmailsError = err.message; })
+    .finally(() => { if (contactDetailId === contactId) renderContactDetailPage({}); });
+}
+
+function renderContactDetailPage(opts) {
+  const c = byId(state.contacts, contactDetailId);
+  if (!c) { switchView("contacts"); return; }
+
+  document.querySelectorAll(".nav-item").forEach((el) => el.classList.toggle("active", el.dataset.view === "contacts"));
+  document.getElementById("settings-gear-btn").classList.remove("active-icon");
+  document.getElementById("view-title").textContent = `${c.first_name} ${c.last_name}`.trim();
+  document.getElementById("view-title-extra").innerHTML = "";
+  document.getElementById("topbar-actions").innerHTML = "";
+
+  const root = document.getElementById("view-root");
+  root.innerHTML = `
+    <a href="#" id="contact-detail-back" class="contact-detail-back">&larr; Back to Contacts</a>
+    ${contactDetailHeaderHtml(c)}
+    ${contactDetailStepperHtml(c.status || "Fresh")}
+    ${contactDetailTabsHtml(c)}
+    <div id="contact-detail-tab-body">${contactDetailTabBodyHtml(c)}</div>
+  `;
+
+  document.getElementById("contact-detail-back").addEventListener("click", (e) => {
+    e.preventDefault();
+    switchView("contacts");
+  });
+
+  wireContactDetailHeader(c);
+  wireContactDetailTabs();
+  wireContactDetailTabBody(c);
+
+  if (opts.scrollToPitch) {
+    const el = document.getElementById("contact-detail-pitch-section");
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
+function contactDetailHeaderHtml(c) {
+  const initial = (c.first_name || "?").trim().charAt(0).toUpperCase() || "?";
+  const company = accountName(c.account_id);
+  const status = c.status || "Fresh";
+  const stageIndex = AUTO_DRAFT_STAGE_ORDER.indexOf(status);
+  const statusColor = status === "Bounced" ? "var(--coral)" : (stageIndex >= 0 ? "var(--violet)" : "var(--text-dim)");
+
+  return `
+    <div class="panel contact-detail-header">
+      <div class="contact-detail-avatar">${escapeAttr(initial)}</div>
+      <div class="contact-detail-id">
+        <div class="contact-detail-name-row">
+          <span class="contact-detail-name">${escapeAttr(c.first_name)} ${escapeAttr(c.last_name)}</span>
+          <span class="pill" style="background:${statusColor}1a;color:${statusColor}">${escapeAttr(status)}</span>
+        </div>
+        <div class="contact-detail-sub">${[c.title, company !== "—" ? company : null].filter(Boolean).map(escapeAttr).join(" at ") || "—"}</div>
+        <div class="contact-detail-meta">
+          ${c.email ? `<span>${escapeAttr(c.email)}</span>` : ""}
+          ${c.phone ? `<span>${escapeAttr(c.phone)}</span>` : ""}
+        </div>
+      </div>
+      <div class="contact-detail-actions">
+        <select id="contact-detail-status-select">
+          ${CONTACT_STATUSES.map((s) => `<option value="${s}" ${status === s ? "selected" : ""}>${s}</option>`).join("")}
+        </select>
+        ${stageIndex >= 0 && stageIndex < AUTO_DRAFT_STAGE_ORDER.length - 1 ? `<button type="button" class="btn btn-primary btn-small" id="contact-detail-advance-btn">&rarr; ${OUTREACH_STAGE_SHORT[stageIndex + 1]}</button>` : ""}
+        <button type="button" class="btn btn-small" id="contact-detail-bounce-btn" style="color:var(--coral);border-color:var(--coral)" ${status === "Bounced" ? "disabled" : ""}>Bounce</button>
+      </div>
+    </div>
+  `;
+}
+
+function contactDetailStepperHtml(status) {
+  const idx = AUTO_DRAFT_STAGE_ORDER.indexOf(status);
+  return `
+    <div class="panel contact-detail-stepper-panel">
+      <div class="contact-detail-stepper-label">OUTREACH PROGRESS</div>
+      <div class="contact-detail-stepper">
+        ${OUTREACH_STAGE_SHORT.map((label, i) => `
+          <div class="contact-detail-step ${idx >= 0 && i <= idx ? "done" : ""} ${idx === i ? "current" : ""}">
+            <div class="contact-detail-step-dot">${i}</div>
+            <div class="contact-detail-step-label">${label}</div>
+          </div>
+          ${i < OUTREACH_STAGE_SHORT.length - 1 ? `<div class="contact-detail-step-line ${idx >= 0 && i < idx ? "done" : ""}"></div>` : ""}
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function contactDetailTimelineEvents(c) {
+  const events = [];
+  if (c.created_at) events.push({ date: c.created_at, label: "Contact created" });
+  (contactDetailEmails || []).forEach((e) => {
+    events.push({
+      date: e.sent_at,
+      label: e.sent ? `Email sent — "${e.subject || "(no subject)"}"` : `Email attempt failed — "${e.subject || "(no subject)"}"`,
+    });
+  });
+  (c.notes_log || []).forEach((n) => {
+    events.push({ date: n.created_at, label: "Note added" });
+  });
+  return events.filter((e) => e.date).sort((a, b) => new Date(b.date) - new Date(a.date));
+}
+
+function contactDetailTabsHtml(c) {
+  const timelineCount = contactDetailTimelineEvents(c).length;
+  const emailsCount = contactDetailEmails.length;
+  const tabs = [
+    ["overview", "Overview"],
+    ["research", "Research"],
+    ["signals", "Signals"],
+    ["notes", "Notes"],
+    ["timeline", `Timeline${timelineCount ? ` (${timelineCount})` : ""}`],
+    ["emails", `Emails${emailsCount ? ` (${emailsCount})` : ""}`],
+  ];
+  return `
+    <div class="settings-tabs" style="margin-top:18px">
+      ${tabs.map(([id, label]) => `<div class="settings-tab ${contactDetailTab === id ? "active" : ""}" data-contact-tab="${id}">${label}</div>`).join("")}
+    </div>
+  `;
+}
+
+function contactDetailTabBodyHtml(c) {
+  if (contactDetailTab === "overview") return contactDetailOverviewHtml(c);
+  if (contactDetailTab === "notes") return contactDetailNotesHtml(c);
+  if (contactDetailTab === "timeline") return contactDetailTimelineHtml(c);
+  if (contactDetailTab === "emails") return contactDetailEmailsHtml(c);
+  return `<div class="panel"><div class="empty-state">Nothing here yet.</div></div>`;
+}
+
+function contactDetailOverviewHtml(c) {
+  const company = accountName(c.account_id);
+  const status = c.status || "Fresh";
+  const stageIndex = AUTO_DRAFT_STAGE_ORDER.indexOf(status);
+  return `
+    <div class="contact-detail-cards">
+      <div class="panel">
+        <div class="contact-detail-card-title">Contact info</div>
+        <table class="contact-detail-kv">
+          <tr><td>Full name</td><td>${escapeAttr(c.first_name)} ${escapeAttr(c.last_name)}</td></tr>
+          <tr><td>Title</td><td>${c.title ? escapeAttr(c.title) : "—"}</td></tr>
+          <tr><td>Company</td><td>${company}</td></tr>
+          <tr><td>Email</td><td>${c.email ? escapeAttr(c.email) : "—"}</td></tr>
+          <tr><td>Phone</td><td>${c.phone ? escapeAttr(c.phone) : "—"}</td></tr>
+        </table>
+      </div>
+      <div class="panel">
+        <div class="contact-detail-card-title">Outreach status</div>
+        <table class="contact-detail-kv">
+          <tr><td>Stage</td><td>${escapeAttr(status)}</td></tr>
+          <tr><td>Sequence step</td><td>${stageIndex >= 0 ? `Step ${stageIndex}` : "—"}</td></tr>
+          <tr><td>Added on</td><td>${c.created_at ? new Date(c.created_at).toLocaleDateString() : "—"}</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="panel" id="contact-detail-pitch-section" style="margin-top:16px">
+      <div class="contact-detail-card-title">Pitch &amp; persona</div>
+      <div class="hint" style="margin:2px 0 10px">Replaces the old free-text IQ notes — this is what feeds the AI when auto-drafting this contact's outreach emails.</div>
+      <label style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:4px">Pitch</label>
+      <textarea id="contact-detail-pitch-text" rows="4" style="width:100%;box-sizing:border-box" placeholder="What angle to use for this contact — this feeds directly into AI email generation…">${escapeAttr(c.pitch || "")}</textarea>
+      <div style="display:flex;justify-content:flex-end;margin-top:8px">
+        <button type="button" class="btn btn-primary btn-small" id="contact-detail-save-pitch-btn">Save Pitch</button>
+      </div>
+      <label style="font-size:12px;color:var(--text-dim);display:block;margin:14px 0 4px">Buying committee persona</label>
+      <div style="display:flex;gap:8px">
+        <select id="contact-detail-persona-select" style="flex:1">
+          <option value="">— Select persona —</option>
+          ${BUYING_COMMITTEE_PERSONAS.map((p) => `<option value="${p}" ${c.buying_committee_persona === p ? "selected" : ""}>${p}</option>`).join("")}
+        </select>
+        <button type="button" class="btn btn-small" id="contact-detail-save-persona-btn">Save</button>
+      </div>
+      <label style="font-size:12px;color:var(--text-dim);display:block;margin:14px 0 4px">Pitch type</label>
+      <div style="display:flex;gap:8px">
+        <select id="contact-detail-pitchtype-select" style="flex:1">
+          <option value="">— Select pitch type —</option>
+          ${PITCH_TYPES.map((p) => `<option value="${p}" ${c.pitch_type === p ? "selected" : ""}>${p}</option>`).join("")}
+        </select>
+        <button type="button" class="btn btn-small" id="contact-detail-save-pitchtype-btn">Save</button>
+      </div>
+    </div>
+  `;
+}
+
+function contactDetailNotesHtml(c) {
+  const notes = (c.notes_log || []).slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  return `
+    <div class="panel">
+      <textarea id="contact-detail-note-text" rows="3" style="width:100%;box-sizing:border-box" placeholder="Add a note about this contact…"></textarea>
+      <div style="display:flex;justify-content:flex-end;margin-top:8px">
+        <button type="button" class="btn btn-primary btn-small" id="contact-detail-add-note-btn">Add Note</button>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      ${notes.length ? notes.map((n) => `
+        <div class="contact-detail-note-item">
+          <div class="contact-detail-note-date">${new Date(n.created_at).toLocaleString()}${n.author ? ` &middot; ${escapeAttr(n.author)}` : ""}</div>
+          <div class="contact-detail-note-text">${escapeAttr(n.text)}</div>
+        </div>
+      `).join("") : `<div class="empty-state">No notes yet.</div>`}
+    </div>
+  `;
+}
+
+function contactDetailTimelineHtml(c) {
+  const events = contactDetailTimelineEvents(c);
+  return `
+    <div class="panel">
+      ${contactDetailEmailsError ? `<div class="hint" style="color:var(--coral);margin-bottom:10px">Couldn't load email activity: ${escapeAttr(contactDetailEmailsError)}</div>` : ""}
+      ${events.length ? events.map((e) => `
+        <div class="contact-detail-timeline-item">
+          <div class="contact-detail-timeline-date">${new Date(e.date).toLocaleString()}</div>
+          <div class="contact-detail-timeline-label">${escapeAttr(e.label)}</div>
+        </div>
+      `).join("") : `<div class="empty-state">Nothing here yet.</div>`}
+    </div>
+  `;
+}
+
+function contactDetailEmailsHtml(c) {
+  const emails = (contactDetailEmails || []).slice().sort((a, b) => new Date(b.sent_at) - new Date(a.sent_at));
+  return `
+    <div class="panel">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+        <button type="button" class="btn btn-primary btn-small" id="contact-detail-compose-btn" ${c.email ? "" : `disabled title="No email on file for this contact"`}>Compose Email</button>
+      </div>
+      ${contactDetailEmailsError ? `<div class="hint" style="color:var(--coral);margin-bottom:10px">Couldn't load email history: ${escapeAttr(contactDetailEmailsError)}</div>` : ""}
+      ${emails.length ? `
+        <table style="width:100%;font-size:13px">
+          <tr style="color:var(--text-dim);text-align:left"><th style="padding:6px 0">Sent</th><th>Subject</th><th>Status</th></tr>
+          ${emails.map((e) => `
+            <tr>
+              <td style="padding:6px 0">${e.sent_at ? new Date(e.sent_at).toLocaleString() : "—"}</td>
+              <td>${escapeAttr(e.subject || "(no subject)")}</td>
+              <td>${e.sent ? `<span class="pill pill-active">Sent</span>` : `<span class="pill pill-lost">${escapeAttr(e.reason || "Failed")}</span>`}</td>
+            </tr>
+          `).join("")}
+        </table>
+      ` : `<div class="empty-state">No emails sent yet.</div>`}
+    </div>
+  `;
+}
+
+function wireContactDetailHeader(c) {
+  document.getElementById("contact-detail-status-select").addEventListener("change", async (e) => {
+    const sel = e.target;
+    sel.disabled = true;
+    try {
+      const updated = await api(`/api/contacts/${c.id}`, { method: "PUT", body: { status: sel.value } });
+      const idx = state.contacts.findIndex((x) => x.id === c.id);
+      if (idx !== -1) state.contacts[idx] = updated;
+      toast("Status updated");
+      renderContactDetailPage({});
+    } catch (err) {
+      toast(err.message, "error");
+      sel.disabled = false;
+    }
+  });
+
+  const advanceBtn = document.getElementById("contact-detail-advance-btn");
+  if (advanceBtn) advanceBtn.addEventListener("click", async () => {
+    const stageIndex = AUTO_DRAFT_STAGE_ORDER.indexOf(c.status || "Fresh");
+    const next = AUTO_DRAFT_STAGE_ORDER[stageIndex + 1];
+    if (!next) return;
+    advanceBtn.disabled = true;
+    try {
+      const updated = await api(`/api/contacts/${c.id}`, { method: "PUT", body: { status: next } });
+      const idx = state.contacts.findIndex((x) => x.id === c.id);
+      if (idx !== -1) state.contacts[idx] = updated;
+      toast(`Advanced to ${next}`);
+      renderContactDetailPage({});
+    } catch (err) {
+      toast(err.message, "error");
+      advanceBtn.disabled = false;
+    }
+  });
+
+  const bounceBtn = document.getElementById("contact-detail-bounce-btn");
+  if (bounceBtn && !bounceBtn.disabled) bounceBtn.addEventListener("click", async () => {
+    bounceBtn.disabled = true;
+    try {
+      const updated = await api(`/api/contacts/${c.id}`, { method: "PUT", body: { status: "Bounced" } });
+      const idx = state.contacts.findIndex((x) => x.id === c.id);
+      if (idx !== -1) state.contacts[idx] = updated;
+      toast("Marked as Bounced");
+      renderContactDetailPage({});
+    } catch (err) {
+      toast(err.message, "error");
+      bounceBtn.disabled = false;
+    }
+  });
+}
+
+function wireContactDetailTabs() {
+  document.querySelectorAll("[data-contact-tab]").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      contactDetailTab = tab.dataset.contactTab;
+      renderContactDetailPage({});
+    });
+  });
+}
+
+function wireContactDetailTabBody(c) {
+  if (contactDetailTab === "overview") {
+    document.getElementById("contact-detail-save-pitch-btn").addEventListener("click", async () => {
+      const btn = document.getElementById("contact-detail-save-pitch-btn");
+      const pitch = document.getElementById("contact-detail-pitch-text").value;
+      btn.disabled = true;
+      btn.textContent = "Saving…";
+      try {
+        const updated = await api(`/api/contacts/${c.id}`, { method: "PUT", body: { pitch } });
+        const idx = state.contacts.findIndex((x) => x.id === c.id);
+        if (idx !== -1) state.contacts[idx] = updated;
+        toast("Pitch saved");
+      } catch (err) {
+        toast(err.message, "error");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Save Pitch";
+      }
+    });
+    document.getElementById("contact-detail-save-persona-btn").addEventListener("click", async () => {
+      const btn = document.getElementById("contact-detail-save-persona-btn");
+      const buying_committee_persona = document.getElementById("contact-detail-persona-select").value;
+      btn.disabled = true;
+      btn.textContent = "Saving…";
+      try {
+        const updated = await api(`/api/contacts/${c.id}`, { method: "PUT", body: { buying_committee_persona } });
+        const idx = state.contacts.findIndex((x) => x.id === c.id);
+        if (idx !== -1) state.contacts[idx] = updated;
+        toast("Persona saved");
+      } catch (err) {
+        toast(err.message, "error");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Save";
+      }
+    });
+    document.getElementById("contact-detail-save-pitchtype-btn").addEventListener("click", async () => {
+      const btn = document.getElementById("contact-detail-save-pitchtype-btn");
+      const pitch_type = document.getElementById("contact-detail-pitchtype-select").value;
+      btn.disabled = true;
+      btn.textContent = "Saving…";
+      try {
+        const updated = await api(`/api/contacts/${c.id}`, { method: "PUT", body: { pitch_type } });
+        const idx = state.contacts.findIndex((x) => x.id === c.id);
+        if (idx !== -1) state.contacts[idx] = updated;
+        toast("Pitch type saved");
+      } catch (err) {
+        toast(err.message, "error");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Save";
+      }
+    });
+  } else if (contactDetailTab === "notes") {
+    document.getElementById("contact-detail-add-note-btn").addEventListener("click", async () => {
+      const btn = document.getElementById("contact-detail-add-note-btn");
+      const textEl = document.getElementById("contact-detail-note-text");
+      const text = textEl.value.trim();
+      if (!text) { toast("Note is empty", "error"); return; }
+      btn.disabled = true;
+      btn.textContent = "Saving…";
+      try {
+        const notes_log = [...(c.notes_log || []), { text, created_at: new Date().toISOString(), author: state.user?.name || "" }];
+        const updated = await api(`/api/contacts/${c.id}`, { method: "PUT", body: { notes_log } });
+        const idx = state.contacts.findIndex((x) => x.id === c.id);
+        if (idx !== -1) state.contacts[idx] = updated;
+        toast("Note added");
+        renderContactDetailPage({});
+      } catch (err) {
+        toast(err.message, "error");
+        btn.disabled = false;
+        btn.textContent = "Add Note";
+      }
+    });
+  } else if (contactDetailTab === "emails") {
+    const composeBtn = document.getElementById("contact-detail-compose-btn");
+    if (composeBtn && !composeBtn.disabled) {
+      composeBtn.addEventListener("click", () => openContactDetailModal(c));
+    }
+  }
 }
 
 // `draftOverride` is used only when re-opening this form after a detour to
